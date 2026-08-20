@@ -11,8 +11,6 @@ struct SidebarView: View {
     @Environment(\.locale) private var locale
 
     @State private var hostToDelete: UUID?
-    @State private var hostForCommandEdit: UUID?
-    @State private var commandDraft: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -24,8 +22,7 @@ struct SidebarView: View {
                 backgroundOpacity: backgroundOpacity,
                 onRequestDelete: { hostToDelete = $0 },
                 onRequestEditCommand: { id, current in
-                    commandDraft = current
-                    hostForCommandEdit = id
+                    promptEditCommand(id: id, current: current)
                 }
             )
             .padding(.top, DT.Layout.trafficLightTopInset)
@@ -57,23 +54,25 @@ struct SidebarView: View {
                 Text(L10n.Sidebar.deleteAlertMessage(h.name))
             }
         }
-        .alert(String(localized: L10n.Sidebar.commandAlertTitle.withLocale(locale)),
-               isPresented: Binding(
-                   get: { hostForCommandEdit != nil },
-                   set: { if !$0 { hostForCommandEdit = nil } })) {
-            TextField(
-                String(localized: L10n.Sidebar.commandAlertPlaceholder.withLocale(locale)),
-                text: $commandDraft
-            )
-            Button(String(localized: L10n.Sidebar.commandAlertCancel.withLocale(locale)), role: .cancel) {
-                hostForCommandEdit = nil
-            }
-            Button(String(localized: L10n.Sidebar.commandAlertSave.withLocale(locale))) {
-                if let id = hostForCommandEdit {
-                    store.updateDefaultCommand(hostId: id, command: commandDraft)
-                }
-                hostForCommandEdit = nil
-            }
+    }
+
+    private func promptEditCommand(id: UUID, current: String) {
+        let alert = NSAlert()
+        alert.messageText = L10n.string("sidebar.row.commandPanel.editTitle")
+        alert.informativeText = ""
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: L10n.string("sidebar.row.commandPanel.save"))
+        alert.addButton(withTitle: L10n.string("sidebar.row.commandPanel.cancel"))
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        input.stringValue = current
+        input.placeholderString = L10n.string("sidebar.row.commandPanel.placeholder")
+        alert.accessoryView = input
+        alert.window.initialFirstResponder = input
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            store.updateDefaultCommand(hostId: id, command: input.stringValue)
         }
     }
 
