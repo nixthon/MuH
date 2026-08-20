@@ -16,7 +16,7 @@ struct MuHApp: App {
     var body: some Scene {
         _ = languageStore.tick
 
-        return WindowGroup {
+        return Window("MuH", id: "main") {
             if GhosttyBridge.shared.isInitialized {
                 ContentView()
                     .environment(themeManager)
@@ -29,6 +29,7 @@ struct MuHApp: App {
             }
         }
         .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1080, height: 720)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button(String(localized: L10n.Menu.settings.withLocale(LanguageStore.shared.locale))) {
@@ -91,45 +92,13 @@ struct MuHApp: App {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    static private(set) var shared: AppDelegate!
-    private(set) weak var mainWindow: NSWindow?
-
-    override init() {
-        super.init()
-        Self.shared = self
-    }
-
+final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let mainMenu = NSApp.mainMenu else { return }
         let topLevelMenusToRemove: Set<String> = [
             "Format", "View", "格式", "显示", "视图"
         ]
         mainMenu.items.removeAll { topLevelMenusToRemove.contains($0.title) }
-    }
-
-    func registerMainWindow(_ window: NSWindow) {
-        self.mainWindow = window
-        window.delegate = self
-    }
-
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        sender.orderOut(nil)
-        return false
-    }
-
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            if let window = mainWindow {
-                window.makeKeyAndOrderFront(nil)
-            } else {
-                for window in sender.windows {
-                    window.makeKeyAndOrderFront(nil)
-                }
-            }
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        return true
     }
 }
 
