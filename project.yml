@@ -102,3 +102,17 @@ targets:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
         Release:
           SWIFT_OPTIMIZATION_LEVEL: "-O"
+
+  MuHTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - MuHTests
+    settings:
+      base:
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        GENERATE_INFOPLIST_FILE: YES
+        HEADER_SEARCH_PATHS:
+          - $(PROJECT_DIR)/Vendor/ghostty/include
+    dependencies:
+      - target: MuH

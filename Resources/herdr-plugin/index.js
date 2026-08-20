@@ -2,7 +2,7 @@
 
 /**
  * MuH Status Title Plugin for Herdr
- * 
+ *
  * Aggregates agent status in the active Herdr workspace/session, sorts them by priority
  * (Blocked and Done first, Working and Idle last), limits to 10 indicators, and writes
  * the formatted title (e.g. "dev2: ×✓✓◐") to the outer terminal title via OSC 0.
@@ -79,39 +79,68 @@ function fetchAgentList(herdrBin) {
 /**
  * Sets the outer terminal title via socket or CLI fallback.
  */
-function setOuterWindowTitle(title, socketPath, herdrBin) {
-  if (socketPath) {
-    try {
-      const client = net.connect(socketPath);
-      const req = {
-        id: 'muh-status-title-set',
-        method: 'client.window_title.set',
-        params: { title },
-      };
-      client.write(JSON.stringify(req) + '\n');
-      client.end();
-      return true;
-    } catch (_) {
-      // socket write failed, fallback to CLI
-    }
-  }
-
+function setOuterWindowTitleViaCLI(title, herdrBin) {
   try {
-    spawnSync(herdrBin, ['terminal', 'title', 'set', title], {
+    const res = spawnSync(herdrBin, ['terminal', 'title', 'set', title], {
       encoding: 'utf8',
       stdio: ['ignore', 'ignore', 'ignore'],
       timeout: 3000,
     });
-    return true;
+    return res.status === 0;
   } catch (_) {
     return false;
   }
 }
 
+function setOuterWindowTitle(title, socketPath, herdrBin) {
+  if (!socketPath) {
+    return Promise.resolve(setOuterWindowTitleViaCLI(title, herdrBin));
+  }
+
+  return new Promise(resolve => {
+    let connected = false;
+    let settled = false;
+    const client = net.createConnection(socketPath);
+
+    const finish = result => {
+      if (settled) return;
+      settled = true;
+      client.destroy();
+      resolve(result);
+    };
+
+    client.setTimeout(1000, () => {
+      if (!connected) {
+        finish(setOuterWindowTitleViaCLI(title, herdrBin));
+      } else {
+        finish(false);
+      }
+    });
+
+    client.once('connect', () => {
+      connected = true;
+      const req = {
+        id: 'muh-status-title-set',
+        method: 'client.window_title.set',
+        params: { title },
+      };
+      client.end(JSON.stringify(req) + '\n', () => finish(true));
+    });
+
+    client.once('error', () => {
+      if (!connected) {
+        finish(setOuterWindowTitleViaCLI(title, herdrBin));
+      } else {
+        finish(false);
+      }
+    });
+  });
+}
+
 /**
  * Main execution function.
  */
-function run() {
+async function run() {
   const args = process.argv.slice(2);
   const isTest = args.includes('--test');
   const isDryRun = args.includes('--dry-run');
@@ -137,7 +166,7 @@ function run() {
     return;
   }
 
-  setOuterWindowTitle(title, socketPath, herdrBin);
+  return setOuterWindowTitle(title, socketPath, herdrBin);
 }
 
 /**
@@ -199,7 +228,13 @@ function runSelfTests() {
 }
 
 // Run immediately
-run();
+run()
+  .then(result => {
+    if (result === false) process.exitCode = 1;
+  })
+  .catch(() => {
+    process.exitCode = 1;
+  });
 
 module.exports = {
   formatAgentStatusSymbols,

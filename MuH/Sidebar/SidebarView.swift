@@ -46,7 +46,10 @@ struct SidebarView: View {
                 hostToDelete = nil
             }
             Button(String(localized: (L10n.Sidebar.deleteAlertConfirm).withLocale(locale)), role: .destructive) {
-                if let id = hostToDelete { store.deleteHost(id: id) }
+                if let id = hostToDelete {
+                    titleStore.clear(hostId: id)
+                    store.deleteHost(id: id)
+                }
                 hostToDelete = nil
             }
         } message: {

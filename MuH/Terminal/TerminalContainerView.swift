@@ -34,7 +34,7 @@ final class TerminalContainerView: NSView {
     func update(hosts: [HostItem], selectedId: UUID?, interactive: Bool = true) {
         self.interactive = interactive
         let liveIds = Set(hosts.map(\.id))
-        for id in terminalViews.keys where !liveIds.contains(id) {
+        for id in terminalViews.keys.filter({ !liveIds.contains($0) }) {
             terminalViews[id]?.removeFromSuperview()
             terminalViews.removeValue(forKey: id)
         }

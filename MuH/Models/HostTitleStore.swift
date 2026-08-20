@@ -1,9 +1,20 @@
 import Foundation
 import Observation
 
+func isAgentStatusTitle(_ title: String) -> Bool {
+    let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.lowercased().hasSuffix(": idle") {
+        return true
+    }
+
+    let symbols: Set<Character> = ["×", "✓", "◐", "○", "·"]
+    return trimmed.contains { symbols.contains($0) }
+}
+
 @Observable
 final class HostTitleStore {
     private var storage: [String: String] = [:]
+    private var statusBaselineHosts = Set<UUID>()
     private let persistenceKey: String
     private var saveWorkItem: DispatchWorkItem?
 
@@ -16,6 +27,13 @@ final class HostTitleStore {
         storage[hostId.uuidString]
     }
 
+    /// Returns true once per app session for the first Herdr status title.
+    /// Reattached sessions use their current state as the new baseline.
+    func shouldSuppressInitialStatus(hostId: UUID, title: String) -> Bool {
+        guard isAgentStatusTitle(title) else { return false }
+        return statusBaselineHosts.insert(hostId).inserted
+    }
+
     func update(hostId: UUID, title: String) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -26,6 +44,7 @@ final class HostTitleStore {
     }
 
     func clear(hostId: UUID) {
+        statusBaselineHosts.remove(hostId)
         guard storage.removeValue(forKey: hostId.uuidString) != nil else { return }
         scheduleSave()
     }

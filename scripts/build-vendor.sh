@@ -1,16 +1,36 @@
 #!/bin/bash
-# Build libghostty static library from ghostty source.
-# Must be run once before opening the Xcode project.
-set -e
+# Build libghostty static library from a pinned Ghostty source revision.
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-GHOSTTY_SRC="/tmp/ghostty-src"
+GHOSTTY_SRC="${GHOSTTY_SRC:-/tmp/ghostty-src}"
+GHOSTTY_COMMIT="4c6215bb8ee186b5c829457a9a9a9c936f2337bf"
+MINIMUM_ZIG_VERSION="0.16.0"
+
+if ! command -v zig >/dev/null 2>&1; then
+  echo "ERROR: Zig ${MINIMUM_ZIG_VERSION} or a compatible 0.16.x release is required but was not found in PATH." >&2
+  exit 1
+fi
+
+ZIG_VERSION="$(zig version)"
+IFS=. read -r ZIG_MAJOR ZIG_MINOR ZIG_PATCH _ <<< "$ZIG_VERSION"
+IFS=. read -r MINIMUM_MAJOR MINIMUM_MINOR MINIMUM_PATCH <<< "$MINIMUM_ZIG_VERSION"
+if [[ "$ZIG_MAJOR" != "$MINIMUM_MAJOR" || "$ZIG_MINOR" != "$MINIMUM_MINOR" || "$ZIG_PATCH" -lt "$MINIMUM_PATCH" ]]; then
+  echo "ERROR: Zig ${MINIMUM_ZIG_VERSION} or a compatible 0.16.x release is required; found ${ZIG_VERSION}." >&2
+  exit 1
+fi
 
 if [ ! -d "$GHOSTTY_SRC" ]; then
   git clone https://github.com/ghostty-org/ghostty "$GHOSTTY_SRC"
 fi
 
 cd "$GHOSTTY_SRC"
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "ERROR: $GHOSTTY_SRC is not a Ghostty git checkout." >&2
+  exit 1
+fi
+git fetch --quiet origin "$GHOSTTY_COMMIT"
+git checkout --quiet --detach "$GHOSTTY_COMMIT"
 zig build -Doptimize=ReleaseFast -Demit-macos-app=false
 
 mkdir -p "$PROJECT_DIR/Vendor/ghostty/include"
@@ -23,11 +43,8 @@ if [ -f "$XCFW/ghostty-internal.a" ]; then
 elif [ -f "$GHOSTTY_SRC/zig-out/lib/libghostty.a" ]; then
   cp "$GHOSTTY_SRC/zig-out/include/ghostty.h" "$PROJECT_DIR/Vendor/ghostty/include/"
   cp "$GHOSTTY_SRC/zig-out/lib/libghostty.a" "$PROJECT_DIR/Vendor/ghostty/lib/"
-elif [ -f "$GHOSTTY_SRC/zig-out/lib/libghostty.dylib" ]; then
-  cp "$GHOSTTY_SRC/zig-out/include/ghostty.h" "$PROJECT_DIR/Vendor/ghostty/include/"
-  cp "$GHOSTTY_SRC/zig-out/lib/libghostty.dylib" "$PROJECT_DIR/Vendor/ghostty/lib/"
 else
-  echo "ERROR: libghostty not found in either GhosttyKit.xcframework or $GHOSTTY_SRC/zig-out/lib/" >&2
+  echo "ERROR: static libghostty.a was not found in Ghostty output." >&2
   exit 1
 fi
 
