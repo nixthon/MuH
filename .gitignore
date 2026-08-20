@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon\r\r
+
+# Xcode
+build/
+DerivedData/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+*.xcworkspace
+!default.xcworkspace
+
+# XcodeGen
+MuH.xcodeproj/
+
+# Local configuration overrides
+Local.xcconfig
+
+# Vendor Large Binaries (Build using scripts/build-vendor.sh)
+Vendor/ghostty/lib/
+Vendor/ghostty/share/

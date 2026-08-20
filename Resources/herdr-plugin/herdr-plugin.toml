@@ -1,0 +1,39 @@
+id = "muh.status-title"
+name = "MuH Status Title"
+version = "0.1.0"
+min_herdr_version = "0.8.0"
+description = "Sync aggregated agent status indicators to outer terminal window title for MuH"
+platforms = ["linux", "macos", "windows"]
+
+[[startup]]
+command = ["node", "index.js"]
+
+[[events]]
+on = "pane.agent_status_changed"
+command = ["node", "index.js"]
+
+[[events]]
+on = "pane.agent_detected"
+command = ["node", "index.js"]
+
+[[events]]
+on = "pane.created"
+command = ["node", "index.js"]
+
+[[events]]
+on = "pane.closed"
+command = ["node", "index.js"]
+
+[[events]]
+on = "workspace.focused"
+command = ["node", "index.js"]
+
+[[events]]
+on = "tab.focused"
+command = ["node", "index.js"]
+
+[[actions]]
+id = "sync"
+title = "Sync status title"
+contexts = ["workspace"]
+command = ["node", "index.js"]
