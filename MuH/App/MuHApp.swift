@@ -24,7 +24,7 @@ struct MuHApp: App {
     var body: some Scene {
         _ = languageStore.tick
 
-        return Window("MuH", id: "main") {
+        return WindowGroup {
             if GhosttyBridge.shared.isInitialized {
                 ContentView()
                     .environment(themeManager)
@@ -101,47 +101,12 @@ struct MuHApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    static private(set) var shared: AppDelegate!
-    private weak var mainWindow: NSWindow?
-
-    override init() {
-        super.init()
-        Self.shared = self
-    }
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let mainMenu = NSApp.mainMenu else { return }
         let topLevelMenusToRemove: Set<String> = [
             "Format", "View", "格式", "显示", "视图"
         ]
         mainMenu.items.removeAll { topLevelMenusToRemove.contains($0.title) }
-    }
-
-    func registerMainWindow(_ window: NSWindow) {
-        mainWindow = window
-        guard let closeButton = window.standardWindowButton(.closeButton) else { return }
-        closeButton.target = self
-        closeButton.action = #selector(hideApplication(_:))
-    }
-
-    @objc private func hideApplication(_ sender: Any?) {
-        NSApp.hide(sender)
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
-    }
-
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            if let mainWindow {
-                mainWindow.makeKeyAndOrderFront(self)
-            } else {
-                sender.windows.first?.makeKeyAndOrderFront(self)
-            }
-        }
-        sender.activate(ignoringOtherApps: true)
-        return true
     }
 }
 

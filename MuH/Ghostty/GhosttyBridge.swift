@@ -17,14 +17,17 @@ final class GhosttyBridge {
 
     @discardableResult
     func initialize() -> Bool {
+        // Export process environment variables BEFORE ghostty_init so libghostty's
+        // global environ snapshot captures the updated environ array without subsequent
+        // reallocations invalidating memory.
+        exportEnvVars()
+
         let argc = CommandLine.argc
         let rawArgv = CommandLine.unsafeArgv
         guard ghostty_init(UInt(argc), rawArgv) == 0 else {
             print("[GhosttyBridge] ghostty_init failed")
             return false
         }
-
-        exportEnvVars()
 
         guard let cfg = buildConfig() else {
             print("[GhosttyBridge] buildConfig failed")
@@ -82,7 +85,7 @@ final class GhosttyBridge {
                 let cacheDir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Caches/MuH")
                 try? FileManager.default.createDirectory(atPath: cacheDir, withIntermediateDirectories: true)
                 let tmpResourcesConf = (cacheDir as NSString).appendingPathComponent("resources-dir.conf")
-                let line = "resources-dir = \"\(ghosttyDir)\"\n"
+                let line = "resources-dir = \(ghosttyDir)\nshell-integration = detect\n"
                 try? line.write(toFile: tmpResourcesConf, atomically: true, encoding: .utf8)
                 tmpResourcesConf.withCString { ghostty_config_load_file(cfg, $0) }
             }
@@ -112,18 +115,13 @@ final class GhosttyBridge {
         self.config = newCfg
     }
 
-    private static let envLock = NSLock()
-
     func newSurface(nsView: NSView,
                     scaleFactor: Double,
                     workingDirectory: String?,
                     command: String?,
                     hostId: UUID) -> ghostty_surface_t? {
         guard isInitialized, let appHandle = app else { return nil }
-        Self.envLock.lock()
-        defer { Self.envLock.unlock() }
 
-        setenv("MUH_HOST_ID", hostId.uuidString, 1)
         let resolvedWorkingDirectory = workingDirectory ?? NSHomeDirectory()
         let initialInput: String?
         if let cmd = command?.trimmingCharacters(in: .whitespacesAndNewlines), !cmd.isEmpty {
@@ -138,14 +136,27 @@ final class GhosttyBridge {
         surfCfg.platform.macos.nsview = Unmanaged.passUnretained(nsView).toOpaque()
         surfCfg.userdata = Unmanaged.passUnretained(nsView).toOpaque()
 
-        return resolvedWorkingDirectory.withCString { wdPtr in
-            surfCfg.working_directory = wdPtr
-            guard let input = initialInput else {
-                return ghostty_surface_new(appHandle, &surfCfg)
-            }
-            return input.withCString { inputPtr in
-                surfCfg.initial_input = inputPtr
-                return ghostty_surface_new(appHandle, &surfCfg)
+        let hostIdStr = hostId.uuidString
+        let keyStr = "MUH_HOST_ID"
+
+        return keyStr.withCString { keyPtr in
+            hostIdStr.withCString { valPtr in
+                var envVars = [ghostty_env_var_s(key: keyPtr, value: valPtr)]
+                return envVars.withUnsafeMutableBufferPointer { envBuf in
+                    surfCfg.env_vars = envBuf.baseAddress
+                    surfCfg.env_var_count = envBuf.count
+
+                    return resolvedWorkingDirectory.withCString { wdPtr in
+                        surfCfg.working_directory = wdPtr
+                        guard let input = initialInput else {
+                            return ghostty_surface_new(appHandle, &surfCfg)
+                        }
+                        return input.withCString { inputPtr in
+                            surfCfg.initial_input = inputPtr
+                            return ghostty_surface_new(appHandle, &surfCfg)
+                        }
+                    }
+                }
             }
         }
     }
@@ -166,6 +177,13 @@ final class GhosttyBridge {
         setenv("MUH", "1", 1)
         setenv("TERM_PROGRAM", "ghostty", 0)
         setenv("COLORTERM", "truecolor", 0)
+
+        if let resourcesPath = Bundle.main.resourcePath {
+            let ghosttyDir = (resourcesPath as NSString).appendingPathComponent("ghostty")
+            if FileManager.default.fileExists(atPath: ghosttyDir) {
+                setenv("GHOSTTY_RESOURCES_DIR", ghosttyDir, 0)
+            }
+        }
     }
 
     // MARK: - C Callbacks

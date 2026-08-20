@@ -128,7 +128,6 @@ struct ContentView: View {
     }
 
     private func configureWindow(_ window: NSWindow) {
-        AppDelegate.shared.registerMainWindow(window)
         GhosttyBridge.shared.applyWindowBackgroundBlur(to: window)
         windowLifecycle.attach(to: window) {
             isFullScreen = true

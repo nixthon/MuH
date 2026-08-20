@@ -4,11 +4,12 @@ final class TerminalContainerView: NSView {
     var store: HostStore?
     var interactive: Bool = true {
         didSet {
+            guard oldValue != interactive else { return }
             if !interactive {
                 GhosttyTerminalView.makeFrontmost(nil)
             } else if let selectedId = store?.selectedId, let term = terminalViews[selectedId] {
                 GhosttyTerminalView.makeFrontmost(term)
-                window?.makeFirstResponder(term)
+                focus(term)
             }
         }
     }
@@ -63,7 +64,7 @@ final class TerminalContainerView: NSView {
             addSubview(termView)
             if interactive {
                 GhosttyTerminalView.makeFrontmost(termView)
-                window?.makeFirstResponder(termView)
+                focus(termView)
             }
         } else {
             termView.frame = bounds
@@ -71,5 +72,10 @@ final class TerminalContainerView: NSView {
                 GhosttyTerminalView.makeFrontmost(termView)
             }
         }
+    }
+
+    private func focus(_ term: GhosttyTerminalView) {
+        guard let window, term.window === window, term.superview === self else { return }
+        window.makeFirstResponder(term)
     }
 }
