@@ -21,10 +21,11 @@ struct TerminalSectionView: View {
                 label: L10n.Settings.Terminal.scrollbackLimit
             )
 
-            BoundSegmented(
+            BoundCustomToggle(
                 settings: settings,
                 key: "copy-on-select",
-                options: ["false", "true", "clipboard"],
+                activeValue: "clipboard",
+                defaultValue: false,
                 label: L10n.Settings.Terminal.copyOnSelect
             )
 

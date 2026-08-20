@@ -212,7 +212,7 @@ final class GhosttyBridge {
 
     private static let confirmReadClipboardCallback: ghostty_runtime_confirm_read_clipboard_cb = { _, _, _, _ in }
 
-    private static let writeClipboardCallback: ghostty_runtime_write_clipboard_cb = { _, _, content, count, _ in
+    private static let writeClipboardCallback: ghostty_runtime_write_clipboard_cb = { userdata, clipboard, content, count, confirm in
         guard !GhosttyBridge.suppressClipboardWrites else { return }
         guard let content = content, count > 0 else { return }
 
@@ -232,10 +232,19 @@ final class GhosttyBridge {
         }
         guard !items.isEmpty else { return }
 
+        // Only write if there is actual non-empty text. Ghostty calls write_clipboard
+        // with empty data on mouse clicks / deselection, which would otherwise wipe the pasteboard.
+        let plainText = items.first(where: { $0.0 == .string })?.1 ?? ""
+        guard !plainText.isEmpty else { return }
+
         let pb = NSPasteboard.general
         pb.clearContents()
         for (type, str) in items {
             pb.setString(str, forType: type)
+        }
+
+        DispatchQueue.main.async {
+            CopyToastHUD.shared.show(at: NSEvent.mouseLocation)
         }
     }
 

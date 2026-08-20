@@ -48,7 +48,24 @@ struct MuHApp: App {
 
             strippedDefaultCommands
 
+            CommandGroup(replacing: .undoRedo) {
+                Button(String(localized: L10n.Menu.undo.withLocale(LanguageStore.shared.locale))) {
+                    NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
+                }
+                .keyboardShortcut("z", modifiers: .command)
+
+                Button(String(localized: L10n.Menu.redo.withLocale(LanguageStore.shared.locale))) {
+                    NSApp.sendAction(Selector(("redo:")), to: nil, from: nil)
+                }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+            }
+
             CommandGroup(replacing: .pasteboard) {
+                Button(String(localized: L10n.Menu.cut.withLocale(LanguageStore.shared.locale))) {
+                    NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("x", modifiers: .command)
+
                 Button(String(localized: L10n.Menu.copy.withLocale(LanguageStore.shared.locale))) {
                     NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
                 }
@@ -71,7 +88,6 @@ struct MuHApp: App {
 
     @CommandsBuilder private var strippedDefaultCommands: some Commands {
         CommandGroup(replacing: .saveItem)          { EmptyView() }
-        CommandGroup(replacing: .undoRedo)          { EmptyView() }
         CommandGroup(replacing: .textEditing)       { EmptyView() }
         CommandGroup(replacing: .textFormatting)    { EmptyView() }
         CommandGroup(replacing: .toolbar)           { EmptyView() }

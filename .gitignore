@@ -32,3 +32,9 @@ docs/dev_log.md
 # Vendor Large Binaries (Build using scripts/build-vendor.sh)
 Vendor/ghostty/lib/
 Vendor/ghostty/share/
+
+#pi 
+.pi/*
+
+# Artifacts
+*.zip

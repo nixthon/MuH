@@ -27,6 +27,34 @@ struct BoundToggle: View {
     }
 }
 
+// MARK: - BoundCustomToggle
+
+struct BoundCustomToggle: View {
+    let settings: SettingsConfigStore
+    let key: String
+    let activeValue: String
+    let defaultValue: Bool
+    let label: LocalizedStringResource
+
+    var body: some View {
+        Toggle(isOn: Binding(
+            get: {
+                guard let raw = settings.get(key)?.lowercased() else { return defaultValue }
+                return raw == activeValue.lowercased() || raw == "true"
+            },
+            set: { newValue in
+                if newValue == defaultValue {
+                    settings.set(key, nil)
+                } else {
+                    settings.set(key, newValue ? activeValue : "false")
+                }
+            }
+        )) {
+            Text(label)
+        }
+    }
+}
+
 // MARK: - BoundSlider
 
 struct BoundSlider: View {

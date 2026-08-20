@@ -11,6 +11,8 @@ struct SidebarView: View {
     @Environment(\.locale) private var locale
 
     @State private var hostToDelete: UUID?
+    @State private var hostToEditCommand: (id: UUID, current: String)?
+    @State private var editingCommandText: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -22,7 +24,8 @@ struct SidebarView: View {
                 backgroundOpacity: backgroundOpacity,
                 onRequestDelete: { hostToDelete = $0 },
                 onRequestEditCommand: { id, current in
-                    promptEditCommand(id: id, current: current)
+                    hostToEditCommand = (id, current)
+                    editingCommandText = current
                 }
             )
             .padding(.top, DT.Layout.trafficLightTopInset)
@@ -57,25 +60,26 @@ struct SidebarView: View {
                 Text(L10n.Sidebar.deleteAlertMessage(h.name))
             }
         }
-    }
-
-    private func promptEditCommand(id: UUID, current: String) {
-        let alert = NSAlert()
-        alert.messageText = L10n.string("sidebar.row.commandPanel.editTitle")
-        alert.informativeText = ""
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: L10n.string("sidebar.row.commandPanel.save"))
-        alert.addButton(withTitle: L10n.string("sidebar.row.commandPanel.cancel"))
-
-        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
-        input.stringValue = current
-        input.placeholderString = L10n.string("sidebar.row.commandPanel.placeholder")
-        alert.accessoryView = input
-        alert.window.initialFirstResponder = input
-
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            store.updateDefaultCommand(hostId: id, command: input.stringValue)
+        .alert(
+            String(localized: (L10n.Sidebar.commandAlertTitle).withLocale(locale)),
+            isPresented: Binding(
+                get: { hostToEditCommand != nil },
+                set: { if !$0 { hostToEditCommand = nil } }
+            )
+        ) {
+            TextField(
+                String(localized: (L10n.Sidebar.commandAlertPlaceholder).withLocale(locale)),
+                text: $editingCommandText
+            )
+            Button(String(localized: (L10n.Sidebar.commandAlertSave).withLocale(locale))) {
+                if let host = hostToEditCommand {
+                    store.updateDefaultCommand(hostId: host.id, command: editingCommandText)
+                }
+                hostToEditCommand = nil
+            }
+            Button(String(localized: (L10n.Sidebar.commandAlertCancel).withLocale(locale)), role: .cancel) {
+                hostToEditCommand = nil
+            }
         }
     }
 

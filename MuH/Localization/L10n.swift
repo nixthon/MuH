@@ -84,6 +84,7 @@ enum L10n {
             static let copyOnSelect           = LocalizedStringResource("settings.terminal.copyOnSelect")
             static let hideMouseWhileTyping   = LocalizedStringResource("settings.terminal.hideMouseWhileTyping")
             static let confirmClose           = LocalizedStringResource("settings.terminal.confirmClose")
+            static let copiedToClipboard      = LocalizedStringResource("terminal.copied.toast")
         }
 
         enum Notification {
@@ -119,9 +120,12 @@ enum L10n {
         static let settings             = LocalizedStringResource("menu.settings")
         static let editConfig           = LocalizedStringResource("menu.editConfig")
         static let newWorkspace         = LocalizedStringResource("menu.newWorkspace")
+        static let cut                  = LocalizedStringResource("menu.cut")
         static let copy                 = LocalizedStringResource("menu.copy")
         static let paste                = LocalizedStringResource("menu.paste")
         static let selectAll            = LocalizedStringResource("menu.selectAll")
+        static let undo                 = LocalizedStringResource("menu.undo")
+        static let redo                 = LocalizedStringResource("menu.redo")
         static let help                 = LocalizedStringResource("menu.help")
         static func selectHostN(_ n: Int) -> LocalizedStringResource {
             LocalizedStringResource("menu.selectWorkspace \(n)")
