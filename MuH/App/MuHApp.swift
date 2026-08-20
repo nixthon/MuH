@@ -91,9 +91,8 @@ struct MuHApp: App {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     static private(set) var shared: AppDelegate!
-    private(set) weak var mainWindow: NSWindow?
 
     override init() {
         super.init()
@@ -108,25 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mainMenu.items.removeAll { topLevelMenusToRemove.contains($0.title) }
     }
 
-    func registerMainWindow(_ window: NSWindow) {
-        self.mainWindow = window
-        window.delegate = self
-    }
-
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        sender.orderOut(nil)
-        return false
-    }
-
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if let window = mainWindow {
-            window.makeKeyAndOrderFront(nil)
-        } else {
-            for window in sender.windows {
-                window.makeKeyAndOrderFront(nil)
-            }
-        }
-        NSApp.activate(ignoringOtherApps: true)
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
     }
 }
