@@ -1,0 +1,66 @@
+import XCTest
+@testable import MuH
+
+final class NotificationStatusTests: XCTestCase {
+    func testNewBlockedAgentTakesPriority() {
+        XCTAssertEqual(
+            notificationKind(
+                oldTitle: "dev: ◐○",
+                newTitle: "dev: ×◐○",
+                notifyOnBlocked: true,
+                notifyOnCompleted: true
+            ),
+            .blocked
+        )
+    }
+
+    func testFinishedWorkingAgentsNotifyWhenAllDone() {
+        XCTAssertEqual(
+            notificationKind(
+                oldTitle: "dev: ◐◐",
+                newTitle: "dev: ✓✓",
+                notifyOnBlocked: true,
+                notifyOnCompleted: true
+            ),
+            .completed
+        )
+    }
+
+    func testNoNotificationForUnchangedStatus() {
+        XCTAssertNil(
+            notificationKind(
+                oldTitle: "dev: ✓◐",
+                newTitle: "dev: ✓◐",
+                notifyOnBlocked: true,
+                notifyOnCompleted: true
+            )
+        )
+    }
+
+    func testDisabledNotificationKindsReturnNil() {
+        XCTAssertNil(
+            notificationKind(
+                oldTitle: "dev: ◐",
+                newTitle: "dev: ×✓",
+                notifyOnBlocked: false,
+                notifyOnCompleted: false
+            )
+        )
+    }
+
+    func testInitialAgentStatusTitleIsDetectedAsBaseline() {
+        XCTAssertTrue(isAgentStatusTitle("dev: ×✓◐"))
+        XCTAssertTrue(isAgentStatusTitle("dev: idle"))
+        XCTAssertFalse(isAgentStatusTitle("bash"))
+    }
+
+    func testInitialAgentStatusIsSuppressedOncePerSession() {
+        let key = "muh.tests.title-baseline.\(UUID().uuidString)"
+        let store = HostTitleStore(persistenceKey: key)
+        let hostId = UUID()
+
+        XCTAssertFalse(store.shouldSuppressInitialStatus(hostId: hostId, title: "bash"))
+        XCTAssertTrue(store.shouldSuppressInitialStatus(hostId: hostId, title: "dev: ×"))
+        XCTAssertFalse(store.shouldSuppressInitialStatus(hostId: hostId, title: "dev: ×"))
+    }
+}

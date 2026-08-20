@@ -9,8 +9,16 @@ struct MuHApp: App {
 
     init() {
         NSWindow.allowsAutomaticWindowTabbing = false
-        let ok = GhosttyBridge.shared.initialize()
-        if !ok { print("[MuH] Warning: libghostty initialization failed") }
+        if !Self.isRunningTests {
+            let ok = GhosttyBridge.shared.initialize()
+            if !ok { print("[MuH] Warning: libghostty initialization failed") }
+        }
+    }
+
+    private static var isRunningTests: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        return environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestBundlePath"] != nil
     }
 
     var body: some Scene {

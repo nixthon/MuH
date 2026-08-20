@@ -314,6 +314,11 @@ final class GhosttyBridge {
                 GhosttyTerminalView.view(forSurface: surface)?.applyHoveredLink(url)
             }
             return true
+        case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
+            // Herdr's terminal delivery arrives as an OSC desktop notification.
+            // MuH owns the higher-level Agent notification, so consume this
+            // action to avoid showing the same event twice inside MuH.
+            return true
         case GHOSTTY_ACTION_SET_TITLE, GHOSTTY_ACTION_SET_WINDOW_TITLE, GHOSTTY_ACTION_SET_TAB_TITLE:
             guard target.tag == GHOSTTY_TARGET_SURFACE, let surface = target.target.surface, let cstr = action.action.set_title.title else { return true }
             let title = String(cString: cstr)

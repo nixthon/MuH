@@ -77,6 +77,18 @@ cd ~/Code/MuH
 ./restart.sh
 ```
 
+MuH 的 Ghostty vendor 构建使用固定的 Ghostty revision 和兼容的 Zig 版本，首次构建前请确保已安装 Zig `0.16.0` 或兼容的 `0.16.x` 补丁版本，然后运行：
+
+```bash
+./scripts/build-vendor.sh
+```
+
+修改 Herdr 插件后，使用下面的命令重新生成远程初始化脚本中的嵌入版本：
+
+```bash
+./scripts/generate-setup-herdr.sh
+```
+
 ### 2. 远程主机一键初始化（配置 Herdr 状态插件）
 
 在新添加的远程服务器上，只需在 Mac 本地执行一行命令即可完成 Herdr 插件的自动部署与状态同步：

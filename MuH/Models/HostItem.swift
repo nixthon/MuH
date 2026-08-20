@@ -7,7 +7,7 @@ struct HostItem: Identifiable, Codable, Equatable {
     /// 默认启动命令，如 "herdr" 或 "herdr --remote dev2"
     var defaultCommand: String?
 
-    init(id: UUID = UUID(), name: String, defaultCommand: String? = "herdr") {
+    init(id: UUID = UUID(), name: String, defaultCommand: String? = nil) {
         self.id = id
         self.name = name
         self.defaultCommand = defaultCommand

@@ -3,6 +3,60 @@ import AppKit
 import UserNotifications
 import Observation
 
+struct AgentIndicatorCounts: Equatable {
+    let blocked: Int
+    let done: Int
+    let working: Int
+    let idle: Int
+
+    init(title: String) {
+        var blocked = 0
+        var done = 0
+        var working = 0
+        var idle = 0
+        for char in title {
+            switch char {
+            case "×": blocked += 1
+            case "✓": done += 1
+            case "◐": working += 1
+            case "○": idle += 1
+            default: break
+            }
+        }
+        self.blocked = blocked
+        self.done = done
+        self.working = working
+        self.idle = idle
+    }
+}
+
+enum AgentNotificationKind: Equatable {
+    case blocked
+    case completed
+}
+
+func notificationKind(
+    oldTitle: String?,
+    newTitle: String,
+    notifyOnBlocked: Bool,
+    notifyOnCompleted: Bool
+) -> AgentNotificationKind? {
+    let oldCounts = AgentIndicatorCounts(title: oldTitle ?? "")
+    let newCounts = AgentIndicatorCounts(title: newTitle)
+
+    if notifyOnBlocked && newCounts.blocked > oldCounts.blocked {
+        return .blocked
+    }
+
+    let hasNewDone = newCounts.done > oldCounts.done
+    let finishedAll = oldCounts.working > 0 && newCounts.working == 0 && newCounts.done > 0
+    if notifyOnCompleted && (hasNewDone || finishedAll) {
+        return .completed
+    }
+
+    return nil
+}
+
 @Observable
 final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
@@ -74,60 +128,31 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     }
 
     // MARK: - State Inspection & Notification Dispatch
-    private struct IndicatorCounts {
-        let blocked: Int   // ×
-        let done: Int      // ✓
-        let working: Int   // ◐
-        let idle: Int      // ○
-
-        init(from title: String) {
-            var b = 0, d = 0, w = 0, i = 0
-            for char in title {
-                switch char {
-                case "×": b += 1
-                case "✓": d += 1
-                case "◐": w += 1
-                case "○": i += 1
-                default: break
-                }
-            }
-            self.blocked = b
-            self.done = d
-            self.working = w
-            self.idle = i
-        }
-    }
-
     func handleTitleChange(host: HostItem, oldTitle: String?, newTitle: String) {
         guard enableNotifications else { return }
 
-        let oldCounts = IndicatorCounts(from: oldTitle ?? "")
-        let newCounts = IndicatorCounts(from: newTitle)
-
-        // 1. 检查是否有新增的阻塞 (×)
-        if notifyOnBlocked && newCounts.blocked > oldCounts.blocked {
+        switch notificationKind(
+            oldTitle: oldTitle,
+            newTitle: newTitle,
+            notifyOnBlocked: notifyOnBlocked,
+            notifyOnCompleted: notifyOnCompleted
+        ) {
+        case .blocked:
             sendNotification(
                 host: host,
                 title: String(localized: L10n.Notification.blockedTitle(host.name)),
                 body: newTitle,
                 category: "AGENT_BLOCKED"
             )
-            return
-        }
-
-        // 2. 检查是否有完成任务 (✓)
-        // 条件：新增了 ✓，或者从正在执行 (◐ > 0) 变成全部执行完 (◐ == 0 && ✓ > 0)
-        let hasNewDone = newCounts.done > oldCounts.done
-        let finishedAll = oldCounts.working > 0 && newCounts.working == 0 && newCounts.done > 0
-
-        if notifyOnCompleted && (hasNewDone || finishedAll) {
+        case .completed:
             sendNotification(
                 host: host,
                 title: String(localized: L10n.Notification.completedTitle(host.name)),
                 body: newTitle,
                 category: "AGENT_DONE"
             )
-            return
+        case nil:
+            break
         }
     }
 

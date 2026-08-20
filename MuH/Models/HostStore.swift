@@ -32,7 +32,7 @@ final class HostStore {
     }
 
     @discardableResult
-    func createHost(name: String, defaultCommand: String? = "herdr") -> HostItem {
+    func createHost(name: String, defaultCommand: String? = nil) -> HostItem {
         let host = HostItem(name: name, defaultCommand: defaultCommand)
         hosts.append(host)
         selectedId = host.id
