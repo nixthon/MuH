@@ -45,19 +45,19 @@ final class HostStore {
         guard !trimmed.isEmpty else { return }
         guard let idx = hosts.firstIndex(where: { $0.id == id }) else { return }
         hosts[idx].name = trimmed
-        scheduleSave()
+        save()
     }
 
     func updateDefaultCommand(hostId: UUID, command: String) {
         guard let idx = hosts.firstIndex(where: { $0.id == hostId }) else { return }
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         hosts[idx].defaultCommand = trimmed.isEmpty ? nil : trimmed
-        scheduleSave()
+        save()
     }
 
     func moveHost(from source: IndexSet, to destination: Int) {
         hosts.move(fromOffsets: source, toOffset: destination)
-        scheduleSave()
+        save()
     }
 
     func deleteHost(id: UUID) {
@@ -66,7 +66,7 @@ final class HostStore {
         if selectedId == id {
             selectedId = hosts.first?.id
         }
-        scheduleSave()
+        save()
     }
 
     private func scheduleSave() {

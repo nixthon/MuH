@@ -122,7 +122,6 @@ struct ContentView: View {
     }
 
     private func configureWindow(_ window: NSWindow) {
-        AppDelegate.shared?.registerMainWindow(window)
         GhosttyBridge.shared.applyWindowBackgroundBlur(to: window)
 
         NotificationCenter.default.addObserver(
