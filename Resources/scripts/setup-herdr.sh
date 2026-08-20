@@ -9,6 +9,37 @@
 
 set -e
 
+# ------------------------------------------------------------------------------
+# 0. Ensure Full PATH in Non-interactive SSH Shells
+# ------------------------------------------------------------------------------
+# When invoked via `ssh host 'bash -s'`, SSH doesn't load ~/.zshrc or ~/.bash_profile.
+# We explicitly probe common user paths and source profiles if available.
+if [ -f "$HOME/.profile" ]; then source "$HOME/.profile" 2>/dev/null || true; fi
+if [ -f "$HOME/.bashrc" ]; then source "$HOME/.bashrc" 2>/dev/null || true; fi
+if [ -f "$HOME/.zshrc" ]; then source "$HOME/.zshrc" 2>/dev/null || true; fi
+
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin:/usr/local/bin:$HOME/.pixi/bin:$HOME/.asdf/shims:$HOME/.fnm/current/bin:$PATH"
+
+# Probe herdr binary location
+if ! command -v herdr >/dev/null 2>&1; then
+    for candidate in "$HOME/.local/bin/herdr" "$HOME/.cargo/bin/herdr" "$HOME/bin/herdr" "/usr/local/bin/herdr"; do
+        if [ -x "$candidate" ]; then
+            export PATH="$(dirname "$candidate"):$PATH"
+            break
+        fi
+    done
+fi
+
+# Probe node binary location
+if ! command -v node >/dev/null 2>&1; then
+    for candidate in "$HOME/.nvm/versions/node"/*"/bin/node" "$HOME/.fnm/current/bin/node" "$HOME/.asdf/shims/node" "$HOME/.pixi/bin/node" "$HOME/.local/bin/node" "/usr/local/bin/node"; do
+        if [ -x "$candidate" ]; then
+            export PATH="$(dirname "$candidate"):$PATH"
+            break
+        fi
+    done
+fi
+
 COLOR_GREEN='\033[0;32m'
 COLOR_YELLOW='\033[1;33m'
 COLOR_RED='\033[0;31m'
@@ -37,8 +68,9 @@ if ! command -v herdr >/dev/null 2>&1; then
     exit 1
 fi
 
+HERDR_BIN=$(command -v herdr)
 HERDR_VERSION=$(herdr --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || echo "unknown")
-ok "Found Herdr version: v${HERDR_VERSION}"
+ok "Found Herdr at $HERDR_BIN (v${HERDR_VERSION})"
 
 # Check Node.js
 if ! command -v node >/dev/null 2>&1; then
@@ -47,8 +79,9 @@ if ! command -v node >/dev/null 2>&1; then
     exit 1
 fi
 
+NODE_BIN=$(command -v node)
 NODE_VERSION=$(node -v 2>&1 || echo "unknown")
-ok "Found Node.js version: ${NODE_VERSION}"
+ok "Found Node.js at $NODE_BIN (${NODE_VERSION})"
 
 # ------------------------------------------------------------------------------
 # 2. Configure ~/.config/herdr/config.toml
