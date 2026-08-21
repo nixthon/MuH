@@ -15,7 +15,7 @@
   - **UI 架构**：SwiftUI + AppKit 混编（零 SPM 外部依赖，原生极速构建）
   - **工程管理**：[XcodeGen](https://github.com/yonaskolb/XcodeGen) (`project.yml`)
   - **终端核心**：内嵌 `libghostty` (C API Bridging) GPU 加速渲染引擎
-  - **多路复用**：单机内部 pane/tab 调度委托给 [Herdr](https://github.com/herdr/herdr)
+  - **多路复用与 Agent 管理**：单机内部 pane/tab 调度与 Agent 状态维护委托给 [Herdr](https://github.com/herdr/herdr)
 
 ---
 
@@ -29,7 +29,7 @@ xcodegen generate
 
 ### 2. 运行单元测试
 ```bash
-# 执行全部单元测试 (XCTest)
+# 执行全部 Swift 单元测试 (XCTest)
 xcodebuild test -scheme MuH -destination "platform=macOS"
 ```
 
@@ -57,14 +57,60 @@ chmod 755 /Applications/MuH.app/Contents/MacOS/MuH
 rm -rf ./build
 ```
 
-### 5. Vendor 与脚本维护
+### 5. Herdr 插件与远程部署维护
+```bash
+# 运行 Herdr 插件逻辑单元测试 (验证符号排序与截断算法)
+node Resources/herdr-plugin/index.js --test
+
+# 模拟运行 Herdr 插件 (Dry-run 查看状态提取与格式化输出)
+node Resources/herdr-plugin/index.js --dry-run
+
+# 修改 Resources/herdr-plugin/ 后重新生成嵌入式远程安装脚本
+./scripts/generate-setup-herdr.sh
+
+# 向远程主机一键部署 Herdr 状态插件
+ssh <user@host> 'bash -s' < Resources/scripts/setup-herdr.sh
+```
+
+### 6. Vendor 维护
 ```bash
 # 重新编译 Vendor/ghostty (需要 Zig 0.16.x)
 ./scripts/build-vendor.sh
-
-# 修改 Herdr 插件后重新生成远程初始化脚本 setup-herdr.sh
-./scripts/generate-setup-herdr.sh
 ```
+
+---
+
+## 🔌 Herdr 插件体系 (Herdr Status Title Plugin)
+
+MuH 的多机全景监控依赖于运行在各机器 Herdr 实例上的状态标题同步插件。
+
+### 1. 插件结构与配置
+- **插件 ID**：`muh.status-title`
+- **源文件目录**：`Resources/herdr-plugin/`
+  - `herdr-plugin.toml`：声明插件元数据、启动触发器与订阅的 Herdr 事件（如 `pane.agent_status_changed`、`pane.agent_detected`、`pane.created`、`pane.closed`、`workspace.focused` 等）；
+  - `index.js`：Node.js 运行时脚本，调用 Herdr RPC / CLI 获取当前 Agent 列表并格式化输出标题；
+  - `README.md`：插件独立说明。
+
+### 2. 状态符号与优先级规则
+插件聚合当前机器上所有 Agent 的生命体征，按严重/关注度优先级排序，并截取前 10 个关键状态符号：
+- <font color="#f87171">🔴 **`×` (blocked)**</font>：阻塞 / 需要人类介入确认（优先级最高，排在最前）；
+- <font color="#4ade80">🟢 **`✓` (done)**</font>：任务完成待查看；
+- <font color="#fbbf24">🟡 **`◐` (working)**</font>：正在执行中；
+- <font color="#94a3b8">⚪ **`○` (idle)**</font>：空闲就绪；
+- <font color="#94a3b8">⚪ **`·` (unknown)**</font>：未知状态。
+
+**格式示例**：`dev2: ×✓✓◐` 或 `prod-node1: idle`。
+
+### 3. PTY OSC 0 标题穿透通道
+1. 插件通过 Unix Socket RPC (`client.window_title.set`) 或 Herdr CLI (`herdr terminal title set`) 将格式化后的标题设为 Herdr 终端标题；
+2. 标题搭载在标准终端 **OSC 0** 控制序列中流出；
+3. SSH 连接将 PTY 输出原样传输到本地 Mac；
+4. MuH 的 Ghostty 引擎捕获 `onTitleChanged`，解析主机名与状态符号，驱动侧边栏指示符与智能系统通知。
+
+### 4. 远程安装与同步工作流
+- 源码修改必须在 `Resources/herdr-plugin/` 中进行；
+- 每次修改后运行 `./scripts/generate-setup-herdr.sh`，脚本会将插件的 TOML 清单和 JS 源码以 Here-Doc 形式自动嵌入到 `Resources/scripts/setup-herdr.sh` 中；
+- 用户在新建主机或添加远程服务器时，只需执行 `setup-herdr.sh` 即可完成零依赖免包管理器安装。
 
 ---
 
@@ -112,6 +158,13 @@ MuH/
 │   ├── L10n.swift               # 强类型多语言定义
 │   ├── LanguageStore.swift      # 语言状态管理
 │   └── Localizable.xcstrings    # 中英文 String Catalog
+├── Resources/                   # 资源与外部集成
+│   ├── herdr-plugin/            # Herdr 状态插件源码 (TOML + JS)
+│   ├── scripts/                 # setup-herdr.sh 远程自包含安装脚本
+│   └── logo.png                 # 项目 Logo
+├── scripts/                     # 自动化构建与代码生成脚本
+│   ├── build-vendor.sh          # 编译 libghostty 静态库
+│   └── generate-setup-herdr.sh  # 将 herdr-plugin 打包嵌入 setup-herdr.sh
 └── Vendor/                      # 静态二进制依赖
     └── ghostty/                 # libghostty.a、头文件与 Ghostty 资源
 ```
