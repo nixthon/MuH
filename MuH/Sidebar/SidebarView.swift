@@ -16,6 +16,9 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            WindowDraggableArea()
+                .frame(height: DT.Layout.trafficLightTopInset)
+
             SidebarListBridge(
                 store: store,
                 hostTitles: titleStore.titlesSnapshot(),
@@ -28,7 +31,6 @@ struct SidebarView: View {
                     editingCommandText = current
                 }
             )
-            .padding(.top, DT.Layout.trafficLightTopInset)
 
             footer
         }
@@ -115,6 +117,7 @@ struct SidebarView: View {
         }
         .padding(.horizontal, DT.Space.md)
         .padding(.vertical, DT.Space.sm)
+        .background(WindowDraggableArea())
     }
 
     private func createHostWithDefaultName() {

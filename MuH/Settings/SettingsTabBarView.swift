@@ -24,6 +24,7 @@ struct SettingsTabBarView: View {
                 .padding(.horizontal, DT.Layout.pillInset)
             }
             .frame(maxWidth: .infinity)
+            .background(WindowDraggableArea())
 
             IconButton(theme: theme, help: String(localized: (L10n.Settings.close).withLocale(locale)), action: onClose) {
                 Image(systemName: "xmark")
@@ -33,6 +34,7 @@ struct SettingsTabBarView: View {
             .frame(width: 28)
         }
         .frame(height: DT.Layout.tabHeight)
+        .background(WindowDraggableArea())
     }
 
     private func pill(for section: SettingsSection) -> some View {

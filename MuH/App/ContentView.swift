@@ -81,6 +81,7 @@ struct ContentView: View {
             .padding(.leading, sidebarCollapsed ? DT.Space.xs : 0)
         }
         .background(Color(themeManager.theme.sidebar).opacity(bgOpacity))
+        .background(WindowDraggableArea())
         .preferredColorScheme(themeManager.theme.isDark ? .dark : .light)
         .environment(\.effectiveContentOpacity, contentBg)
         .muhFullSizeContent(

@@ -2,6 +2,36 @@ import AppKit
 
 private final class FlippedRowsContainer: NSView {
     override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    private var lastClickTime: TimeInterval = 0
+    private var lastClickPoint: NSPoint = .zero
+
+    override func mouseDown(with event: NSEvent) {
+        let now = ProcessInfo.processInfo.systemUptime
+        let dt = now - lastClickTime
+        let pt = event.locationInWindow
+        let dx = pt.x - lastClickPoint.x
+        let dy = pt.y - lastClickPoint.y
+        let isManualDoubleClick = dt < NSEvent.doubleClickInterval && (dx * dx + dy * dy < 25)
+
+        if event.clickCount == 2 || isManualDoubleClick {
+            lastClickTime = 0
+            if let window = self.window {
+                WindowHelper.performDoubleClickAction(on: window)
+            }
+            return
+        }
+
+        lastClickTime = now
+        lastClickPoint = pt
+
+        guard let window = self.window else {
+            super.mouseDown(with: event)
+            return
+        }
+        window.performDrag(with: event)
+    }
 }
 
 final class HostListView: NSView {
@@ -21,6 +51,37 @@ final class HostListView: NSView {
 
     fileprivate var draggingId: UUID?
     fileprivate var previewInsertionIndex: Int?
+
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    private var lastClickTime: TimeInterval = 0
+    private var lastClickPoint: NSPoint = .zero
+
+    override func mouseDown(with event: NSEvent) {
+        let now = ProcessInfo.processInfo.systemUptime
+        let dt = now - lastClickTime
+        let pt = event.locationInWindow
+        let dx = pt.x - lastClickPoint.x
+        let dy = pt.y - lastClickPoint.y
+        let isManualDoubleClick = dt < NSEvent.doubleClickInterval && (dx * dx + dy * dy < 25)
+
+        if event.clickCount == 2 || isManualDoubleClick {
+            lastClickTime = 0
+            if let window = self.window {
+                WindowHelper.performDoubleClickAction(on: window)
+            }
+            return
+        }
+
+        lastClickTime = now
+        lastClickPoint = pt
+
+        guard let window = self.window else {
+            super.mouseDown(with: event)
+            return
+        }
+        window.performDrag(with: event)
+    }
 
     static let rowHeight: CGFloat = DT.Layout.rowHeight
     static let rowSpacing: CGFloat = 3
