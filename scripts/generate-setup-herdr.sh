@@ -8,6 +8,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SETUP_SCRIPT="$PROJECT_DIR/Resources/scripts/setup-herdr.sh"
 MANIFEST="$PROJECT_DIR/Resources/herdr-plugin/herdr-plugin.toml"
 PLUGIN="$PROJECT_DIR/Resources/herdr-plugin/index.js"
+RUNNER="$PROJECT_DIR/Resources/herdr-plugin/run.sh"
 
 replace_block() {
     local file="$1" start="$2" end="$3" content="$4" tmp
@@ -37,6 +38,18 @@ replace_block "$SETUP_SCRIPT" \
     '# END GENERATED PLUGIN MANIFEST' \
     "$tmp_manifest"
 rm -f "$tmp_manifest"
+
+tmp_runner=$(mktemp)
+{
+    printf "cat << 'MUH_PLUGIN_RUNNER' > \"\$PLUGIN_DIR/run.sh\"\n"
+    cat "$RUNNER"
+    printf "MUH_PLUGIN_RUNNER\n"
+} > "$tmp_runner"
+replace_block "$SETUP_SCRIPT" \
+    '# BEGIN GENERATED PLUGIN RUNNER' \
+    '# END GENERATED PLUGIN RUNNER' \
+    "$tmp_runner"
+rm -f "$tmp_runner"
 
 tmp_plugin=$(mktemp)
 {

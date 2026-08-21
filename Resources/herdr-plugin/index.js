@@ -11,13 +11,15 @@
 const { spawnSync } = require('node:child_process');
 const os = require('node:os');
 const net = require('node:net');
+const path = require('node:path');
+const fs = require('node:fs');
 
 const STATUS_CONFIG = {
-  blocked: { weight: 1, symbol: '×' }, // 阻塞 / 需要确认
-  done:    { weight: 2, symbol: '✓' }, // 完成待查看
-  working: { weight: 3, symbol: '◐' }, // 正在执行
-  idle:    { weight: 4, symbol: '○' }, // 空闲
-  unknown: { weight: 5, symbol: '·' }, // 未知
+  blocked: { weight: 1, symbol: '×' }, // 🔴 阻塞 / 需要确认
+  done:    { weight: 2, symbol: '✓' }, // 🟢 完成待查看
+  working: { weight: 3, symbol: '◐' }, // 🟡 正在执行
+  idle:    { weight: 4, symbol: '○' }, // ⚪️ 空闲
+  unknown: { weight: 5, symbol: '·' }, // ⚪️ 未知
 };
 
 const MAX_INDICATORS = 10;
@@ -39,7 +41,7 @@ function formatAgentStatusSymbols(statuses) {
     return wa - wb;
   });
 
-  // 2. 超过 5 个只截取前 5 个最关键的状态符号
+  // 2. 截取前 MAX_INDICATORS 个最关键的状态符号
   const top = sorted.slice(0, MAX_INDICATORS);
 
   // 3. 映射为对应符号并拼接
@@ -55,9 +57,99 @@ function getHostname() {
 }
 
 /**
- * Fetches the current agent list from Herdr.
+ * Probe default Herdr Unix socket path if not provided in environment.
  */
-function fetchAgentList(herdrBin) {
+function resolveSocketPath() {
+  if (process.env.HERDR_SOCKET_PATH && fs.existsSync(process.env.HERDR_SOCKET_PATH)) {
+    return process.env.HERDR_SOCKET_PATH;
+  }
+  const home = os.homedir();
+  const candidates = [
+    path.join(home, '.config', 'herdr', 'herdr.sock'),
+    path.join(home, '.local', 'share', 'herdr', 'herdr.sock'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      return c;
+    }
+  }
+  return null;
+}
+
+/**
+ * Fetches agent list and updates terminal title via direct Unix Socket JSON-RPC.
+ * Returns true on success, false on failure (which triggers CLI fallback).
+ */
+function syncViaSocket(socketPath, hostname) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let buffer = '';
+    let stage = 'fetch'; // 'fetch' -> 'set' -> 'done'
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      try {
+        client.destroy();
+      } catch (_) {}
+      resolve(result);
+    };
+
+    const client = net.createConnection(socketPath);
+    client.setTimeout(2000, () => finish(false));
+
+    client.on('error', () => finish(false));
+
+    client.on('connect', () => {
+      // Step 1: Request agent list
+      const req = {
+        id: 'muh-agent-list',
+        method: 'agent.list',
+        params: {},
+      };
+      client.write(JSON.stringify(req) + '\n');
+    });
+
+    client.on('data', (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const resp = JSON.parse(trimmed);
+          if (stage === 'fetch' && resp.id === 'muh-agent-list') {
+            const agents = resp.result?.agents && Array.isArray(resp.result.agents) ? resp.result.agents : [];
+            const statuses = agents.map(a => a.agent_status || a.status || 'unknown');
+            const symbols = formatAgentStatusSymbols(statuses);
+            const title = symbols ? `${hostname}: ${symbols}` : `${hostname}: idle`;
+
+            stage = 'set';
+            const setReq = {
+              id: 'muh-title-set',
+              method: 'client.window_title.set',
+              params: { title },
+            };
+            client.write(JSON.stringify(setReq) + '\n');
+          } else if (stage === 'set' && resp.id === 'muh-title-set') {
+            finish(true);
+            return;
+          }
+        } catch (_) {
+          finish(false);
+          return;
+        }
+      }
+    });
+  });
+}
+
+/**
+ * CLI Fallback: Fetches the current agent list from Herdr.
+ */
+function fetchAgentListCLI(herdrBin) {
   try {
     const res = spawnSync(herdrBin, ['agent', 'list'], {
       encoding: 'utf8',
@@ -70,14 +162,12 @@ function fetchAgentList(herdrBin) {
         return parsed.result.agents;
       }
     }
-  } catch (err) {
-    // ignore
-  }
+  } catch (_) {}
   return [];
 }
 
 /**
- * Sets the outer terminal title via socket or CLI fallback.
+ * CLI Fallback: Sets the outer terminal title via Herdr CLI.
  */
 function setOuterWindowTitleViaCLI(title, herdrBin) {
   try {
@@ -92,51 +182,6 @@ function setOuterWindowTitleViaCLI(title, herdrBin) {
   }
 }
 
-function setOuterWindowTitle(title, socketPath, herdrBin) {
-  if (!socketPath) {
-    return Promise.resolve(setOuterWindowTitleViaCLI(title, herdrBin));
-  }
-
-  return new Promise(resolve => {
-    let connected = false;
-    let settled = false;
-    const client = net.createConnection(socketPath);
-
-    const finish = result => {
-      if (settled) return;
-      settled = true;
-      client.destroy();
-      resolve(result);
-    };
-
-    client.setTimeout(1000, () => {
-      if (!connected) {
-        finish(setOuterWindowTitleViaCLI(title, herdrBin));
-      } else {
-        finish(false);
-      }
-    });
-
-    client.once('connect', () => {
-      connected = true;
-      const req = {
-        id: 'muh-status-title-set',
-        method: 'client.window_title.set',
-        params: { title },
-      };
-      client.end(JSON.stringify(req) + '\n', () => finish(true));
-    });
-
-    client.once('error', () => {
-      if (!connected) {
-        finish(setOuterWindowTitleViaCLI(title, herdrBin));
-      } else {
-        finish(false);
-      }
-    });
-  });
-}
-
 /**
  * Main execution function.
  */
@@ -147,26 +192,66 @@ async function run() {
 
   if (isTest) {
     runSelfTests();
-    return;
+    return true;
   }
 
-  const herdrBin = process.env.HERDR_BIN_PATH || 'herdr';
-  const socketPath = process.env.HERDR_SOCKET_PATH;
   const hostname = getHostname();
-
-  const agents = fetchAgentList(herdrBin);
-  const statuses = agents.map(a => a.agent_status || a.status || 'unknown');
-
-  const symbols = formatAgentStatusSymbols(statuses);
-  const title = symbols ? `${hostname}: ${symbols}` : `${hostname}: idle`;
+  const socketPath = resolveSocketPath();
+  const herdrBin = process.env.HERDR_BIN_PATH || 'herdr';
 
   if (isDryRun) {
+    let agents = [];
+    if (socketPath) {
+      // dry-run with socket
+      try {
+        const res = await new Promise(resResolve => {
+          const client = net.createConnection(socketPath);
+          client.setTimeout(1500, () => { client.destroy(); resResolve(null); });
+          client.on('error', () => resResolve(null));
+          client.on('connect', () => {
+            client.write(JSON.stringify({ id: 'dry-run', method: 'agent.list', params: {} }) + '\n');
+          });
+          let buf = '';
+          client.on('data', chunk => {
+            buf += chunk.toString();
+            if (buf.includes('\n')) {
+              try {
+                const parsed = JSON.parse(buf.split('\n')[0]);
+                client.destroy();
+                resResolve(parsed.result?.agents || []);
+              } catch (_) {
+                client.destroy();
+                resResolve(null);
+              }
+            }
+          });
+        });
+        if (res) agents = res;
+      } catch (_) {}
+    }
+    if (agents.length === 0) {
+      agents = fetchAgentListCLI(herdrBin);
+    }
+    const statuses = agents.map(a => a.agent_status || a.status || 'unknown');
+    const symbols = formatAgentStatusSymbols(statuses);
+    const title = symbols ? `${hostname}: ${symbols}` : `${hostname}: idle`;
     console.log(`[StatusTitle DryRun] Agents: ${statuses.join(', ')}`);
     console.log(`[StatusTitle DryRun] Title: "${title}"`);
-    return;
+    return true;
   }
 
-  return setOuterWindowTitle(title, socketPath, herdrBin);
+  // 1. Primary path: Native Unix Socket JSON-RPC
+  if (socketPath) {
+    const ok = await syncViaSocket(socketPath, hostname);
+    if (ok) return true;
+  }
+
+  // 2. Fallback path: CLI subprocess
+  const agents = fetchAgentListCLI(herdrBin);
+  const statuses = agents.map(a => a.agent_status || a.status || 'unknown');
+  const symbols = formatAgentStatusSymbols(statuses);
+  const title = symbols ? `${hostname}: ${symbols}` : `${hostname}: idle`;
+  return setOuterWindowTitleViaCLI(title, herdrBin);
 }
 
 /**
