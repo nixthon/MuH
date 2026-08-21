@@ -14,11 +14,11 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 # When invoked via `ssh host 'bash -s'`, SSH doesn't load ~/.zshrc or ~/.bash_profile.
 # We explicitly probe common user paths and source profiles if available.
-if [ -f "$HOME/.profile" ]; then source "$HOME/.profile" 2>/dev/null || true; fi
-if [ -f "$HOME/.bashrc" ]; then source "$HOME/.bashrc" 2>/dev/null || true; fi
-if [ -f "$HOME/.zshrc" ]; then source "$HOME/.zshrc" 2>/dev/null || true; fi
+if [ -f "$HOME/.profile" ]; then (source "$HOME/.profile" 2>/dev/null) && source "$HOME/.profile" 2>/dev/null || true; fi
+if [ -f "$HOME/.bash_profile" ]; then (source "$HOME/.bash_profile" 2>/dev/null) && source "$HOME/.bash_profile" 2>/dev/null || true; fi
+if [ -f "$HOME/.bashrc" ]; then (source "$HOME/.bashrc" 2>/dev/null) && source "$HOME/.bashrc" 2>/dev/null || true; fi
 
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin:/usr/local/bin:$HOME/.pixi/bin:$HOME/.asdf/shims:$HOME/.fnm/current/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin:/usr/local/bin:$HOME/.pixi/bin:$HOME/.pixi/envs/default/bin:$HOME/.pixi/envs/nodejs/bin:$HOME/.asdf/shims:$HOME/.fnm/current/bin:$PATH"
 
 # Probe herdr binary location
 if ! command -v herdr >/dev/null 2>&1; then
