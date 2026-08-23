@@ -46,8 +46,6 @@ enum L10n {
         static let theme                = LocalizedStringResource("settings.appearance.theme")
         static let backgroundOpacity    = LocalizedStringResource("settings.appearance.backgroundOpacity")
         static let backgroundBlur       = LocalizedStringResource("settings.appearance.backgroundBlur")
-        static let contentOpacity       = LocalizedStringResource("settings.appearance.contentOpacity")
-        static let contentShadow        = LocalizedStringResource("settings.appearance.contentShadow")
         static let windowPaddingX       = LocalizedStringResource("settings.appearance.windowPaddingX")
         static let windowPaddingY       = LocalizedStringResource("settings.appearance.windowPaddingY")
         static let cursorStyle          = LocalizedStringResource("settings.appearance.cursorStyle")

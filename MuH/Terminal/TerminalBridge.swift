@@ -4,7 +4,6 @@ import AppKit
 struct TerminalBridge: NSViewRepresentable {
     @Bindable var store: HostStore
     var theme: AppTheme
-    var backgroundOpacity: CGFloat = 1.0
     var interactive: Bool = true
 
     func makeNSView(context: Context) -> TerminalContainerView {

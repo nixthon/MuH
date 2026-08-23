@@ -12,10 +12,6 @@ final class ThemeManager {
 
     private(set) var backgroundOpacity: CGFloat = 1.0
     private(set) var backgroundBlurRadius: CGFloat = 0
-    private(set) var contentOpacity: CGFloat = 1.0
-
-    var contentEffectiveOpacity: CGFloat { backgroundOpacity * contentOpacity }
-    private(set) var contentShadowIntensity: CGFloat = 0
 
     init() {
         let isDark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
@@ -27,6 +23,7 @@ final class ThemeManager {
             accent: accent,
             systemIsDark: isDark
         )
+        loadFromGhosttyConfig()
         observeSystemAppearance()
     }
 
@@ -68,16 +65,6 @@ final class ThemeManager {
             backgroundBlurRadius = CGFloat(max(0, d))
         } else {
             backgroundBlurRadius = 0
-        }
-        if let val = store.get("muh-content-opacity"), let d = Double(val) {
-            contentOpacity = CGFloat(max(0, min(1, d)))
-        } else {
-            contentOpacity = 1.0
-        }
-        if let val = store.get("muh-content-shadow"), let d = Double(val) {
-            contentShadowIntensity = CGFloat(max(0, min(1, d)))
-        } else {
-            contentShadowIntensity = 0
         }
     }
 

@@ -21,7 +21,6 @@ struct ContentView: View {
     var body: some View {
         _ = languageStore.tick
         let bgOpacity = isFullScreen ? 1.0 : themeManager.backgroundOpacity
-        let contentBg = isFullScreen ? 1.0 : themeManager.contentEffectiveOpacity
 
         return HStack(spacing: 0) {
             if !sidebarCollapsed {
@@ -32,11 +31,13 @@ struct ContentView: View {
                     width: sidebarWidth,
                     backgroundOpacity: bgOpacity
                 )
+                .background(Color(themeManager.theme.sidebar).opacity(bgOpacity))
                 .transition(.move(edge: .leading).combined(with: .opacity))
 
                 SidebarResizeHandle(
                     width: $sidebarWidth,
-                    theme: themeManager.theme
+                    theme: themeManager.theme,
+                    backgroundOpacity: bgOpacity
                 )
             }
 
@@ -44,7 +45,6 @@ struct ContentView: View {
                 TerminalBridge(
                     store: store,
                     theme: themeManager.theme,
-                    backgroundOpacity: contentBg,
                     interactive: !showSettings
                 )
                 .opacity(showSettings ? 0 : 1)
@@ -60,30 +60,10 @@ struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(themeManager.theme.canvas).opacity(contentBg))
-            .clipShape(RoundedRectangle(cornerRadius: DT.Radius.card, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: DT.Radius.card, style: .continuous)
-                    .strokeBorder(
-                        Color(themeManager.theme.border).opacity(0.4),
-                        lineWidth: DT.Stroke.hairline
-                    )
-            }
-            .shadow(
-                color: Color.black.opacity(0.15),
-                radius: 8,
-                x: 0,
-                y: 2
-            )
-            .padding(.top, DT.Space.xs)
-            .padding(.trailing, DT.Space.xs)
-            .padding(.bottom, DT.Space.xs)
-            .padding(.leading, sidebarCollapsed ? DT.Space.xs : 0)
         }
-        .background(Color(themeManager.theme.sidebar).opacity(bgOpacity))
         .background(WindowDraggableArea())
         .preferredColorScheme(themeManager.theme.isDark ? .dark : .light)
-        .environment(\.effectiveContentOpacity, contentBg)
+        .environment(\.effectiveContentOpacity, bgOpacity)
         .muhFullSizeContent(
             backgroundOpacity: bgOpacity,
             blurRadius: themeManager.backgroundBlurRadius,

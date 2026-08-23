@@ -639,10 +639,12 @@ if ! link_output=$(herdr plugin link "$PLUGIN_DIR" 2>&1); then
 fi
 
 # Verify link
-if herdr plugin list 2>&1 | grep -q 'muh.status-title'; then
+plugin_list_output=$(herdr plugin list 2>&1 || true)
+if echo "$plugin_list_output" | grep -Fq 'muh.status-title'; then
     ok "Plugin muh.status-title successfully registered and enabled!"
 else
     err "Plugin registration could not be verified."
+    printf '%s\n' "$plugin_list_output"
     exit 1
 fi
 

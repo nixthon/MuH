@@ -10,8 +10,6 @@ struct AppearanceSectionView: View {
         "theme",
         "background-opacity",
         "background-blur-radius",
-        "muh-content-opacity",
-        "muh-content-shadow",
         "window-padding-x",
         "window-padding-y",
         "cursor-style",
@@ -39,24 +37,6 @@ struct AppearanceSectionView: View {
                 range: 0...100,
                 step: 1,
                 label: L10n.Settings.backgroundBlur
-            )
-
-            BoundSlider(
-                settings: settings,
-                key: "muh-content-opacity",
-                defaultValue: 1.0,
-                range: 0.0...1.0,
-                step: 0.05,
-                label: L10n.Settings.contentOpacity
-            )
-
-            BoundSlider(
-                settings: settings,
-                key: "muh-content-shadow",
-                defaultValue: 0,
-                range: 0.0...1.0,
-                step: 0.05,
-                label: L10n.Settings.contentShadow
             )
 
             BoundStepper(

@@ -20,8 +20,6 @@ final class TerminalContainerView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.cornerRadius = DT.Radius.card
-        layer?.masksToBounds = true
     }
     required init?(coder: NSCoder) { fatalError() }
 
