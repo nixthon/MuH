@@ -75,6 +75,7 @@ LUVUS_BIN=$(probe_luvus || true)
 
 if [ -z "$LUVUS_BIN" ]; then
     info "Luvus is not installed. Installing Luvus automatically via official installer..."
+    export LUVUS_VERSION="${LUVUS_VERSION:-v0.12.0}"
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL https://luvus.dev/install.sh | sh
     elif command -v wget >/dev/null 2>&1; then
@@ -633,10 +634,11 @@ function runSelfTests() {
 // Run immediately
 run()
   .then(result => {
-    if (result === false) process.exitCode = 1;
+    process.exit(result === false ? 1 : 0);
   })
-  .catch(() => {
-    process.exitCode = 1;
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
   });
 
 module.exports = {
@@ -656,15 +658,27 @@ ok "Module files installed to $MODULE_DIR"
 # 5. Link & Activate Module in Luvus
 # ------------------------------------------------------------------------------
 info "Linking module into Luvus..."
+
+# Ensure Luvus background daemon is started so CLI IPC can communicate
+if ! "$LUVUS_BIN" server status >/dev/null 2>&1; then
+    "$LUVUS_BIN" server start >/dev/null 2>&1 || true
+    sleep 1
+fi
+
 module_list_output=$("$LUVUS_BIN" module list 2>&1 || true)
 if echo "$module_list_output" | grep -Fq 'muh.status-title'; then
     ok "Module muh.status-title is already registered in Luvus."
     "$LUVUS_BIN" module enable "muh.status-title" >/dev/null 2>&1 || true
 else
     if ! link_output=$("$LUVUS_BIN" module link "$MODULE_DIR" 2>&1); then
-        err "Failed to register module:"
-        printf '%s\n' "$link_output"
-        exit 1
+        # If server was starting up, retry once
+        "$LUVUS_BIN" server start >/dev/null 2>&1 || true
+        sleep 1
+        if ! link_output=$("$LUVUS_BIN" module link "$MODULE_DIR" 2>&1); then
+            err "Failed to register module:"
+            printf '%s\n' "$link_output"
+            exit 1
+        fi
     fi
 fi
 

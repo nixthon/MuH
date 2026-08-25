@@ -379,10 +379,11 @@ function runSelfTests() {
 // Run immediately
 run()
   .then(result => {
-    if (result === false) process.exitCode = 1;
+    process.exit(result === false ? 1 : 0);
   })
-  .catch(() => {
-    process.exitCode = 1;
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
   });
 
 module.exports = {
