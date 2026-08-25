@@ -15,7 +15,7 @@
   - **UI 架构**：SwiftUI + AppKit 混编（零 SPM 外部依赖，原生极速构建）
   - **工程管理**：[XcodeGen](https://github.com/yonaskolb/XcodeGen) (`project.yml`)
   - **终端核心**：内嵌 `libghostty` (C API Bridging) GPU 加速渲染引擎
-  - **多路复用与 Agent 管理**：单机内部 pane/tab 调度与 Agent 状态维护委托给 [Herdr](https://github.com/herdr/herdr)
+  - **多路复用与 Agent 管理**：单机内部 pane/tab 调度与 Agent 状态维护委托给 [Luvus](https://github.com/RizRiyz/luvus) 或 [Herdr](https://github.com/herdr/herdr)
 
 ---
 
@@ -54,22 +54,29 @@ find /Applications/MuH.app -type d -exec chmod 755 {} +
 find /Applications/MuH.app -type f -exec chmod 644 {} +
 chmod 755 /Applications/MuH.app/Contents/MacOS/MuH
 [ -f /Applications/MuH.app/Contents/Resources/setup-herdr.sh ] && chmod 755 /Applications/MuH.app/Contents/Resources/setup-herdr.sh
+[ -f /Applications/MuH.app/Contents/Resources/setup-luvus.sh ] && chmod 755 /Applications/MuH.app/Contents/Resources/setup-luvus.sh
 rm -rf ./build
 ```
 
-### 5. Herdr 插件与远程部署维护
+### 5. Herdr / Luvus 插件与远程部署维护
 ```bash
 # 运行 Herdr 插件逻辑单元测试 (验证符号排序与截断算法)
 node Resources/herdr-plugin/index.js --test
 
-# 模拟运行 Herdr 插件 (Dry-run 查看状态提取与格式化输出)
+# 运行 Luvus 模块逻辑单元测试
+node Resources/luvus-plugin/index.js --test
+
+# 模拟运行 Herdr / Luvus 插件
 node Resources/herdr-plugin/index.js --dry-run
+node Resources/luvus-plugin/index.js --dry-run
 
-# 修改 Resources/herdr-plugin/ 后重新生成嵌入式远程安装脚本
+# 修改 Resources/herdr-plugin/ 或 Resources/luvus-plugin/ 后重新生成嵌入式远程安装脚本
 ./scripts/generate-setup-herdr.sh
+./scripts/generate-setup-luvus.sh
 
-# 向远程主机一键部署 Herdr 状态插件
+# 向远程主机一键部署 Herdr 或 Luvus 状态插件
 ssh <user@host> 'bash -s' < Resources/scripts/setup-herdr.sh
+ssh <user@host> 'bash -s' < Resources/scripts/setup-luvus.sh
 ```
 
 ### 6. Vendor 维护

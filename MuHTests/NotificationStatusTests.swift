@@ -26,6 +26,50 @@ final class NotificationStatusTests: XCTestCase {
         )
     }
 
+    func testWorkingToIdleTransitionNotifiesCompletion() {
+        XCTAssertEqual(
+            notificationKind(
+                oldTitle: "dev: ◐",
+                newTitle: "dev: idle",
+                notifyOnBlocked: true,
+                notifyOnCompleted: true
+            ),
+            .completed
+        )
+        XCTAssertEqual(
+            notificationKind(
+                oldTitle: "dev: ◐",
+                newTitle: "dev: ○",
+                notifyOnBlocked: true,
+                notifyOnCompleted: true
+            ),
+            .completed
+        )
+    }
+
+    func testWorkingToBlockedTransitionNotifiesBlocked() {
+        XCTAssertEqual(
+            notificationKind(
+                oldTitle: "dev: ◐",
+                newTitle: "dev: ×",
+                notifyOnBlocked: true,
+                notifyOnCompleted: true
+            ),
+            .blocked
+        )
+    }
+
+    func testStillWorkingDoesNotNotifyCompletion() {
+        XCTAssertNil(
+            notificationKind(
+                oldTitle: "dev: ◐◐",
+                newTitle: "dev: ◐",
+                notifyOnBlocked: true,
+                notifyOnCompleted: true
+            )
+        )
+    }
+
     func testNoNotificationForUnchangedStatus() {
         XCTAssertNil(
             notificationKind(

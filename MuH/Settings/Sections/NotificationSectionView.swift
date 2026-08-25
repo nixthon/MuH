@@ -1,18 +1,39 @@
 import SwiftUI
 import AppKit
 
+enum RemoteMultiplexerKind: String, CaseIterable, Identifiable {
+    case luvus = "Luvus"
+    case herdr = "Herdr"
+
+    var id: String { rawValue }
+}
+
 struct NotificationSectionView: View {
     let theme: AppTheme
     @State private var manager = NotificationManager.shared
     @State private var isCopied = false
+    @State private var selectedBackend: RemoteMultiplexerKind = .luvus
 
     @Environment(\.locale) private var locale
 
     private var setupCommand: String {
-        let scriptPath = (Bundle.main.resourcePath ?? "") + "/setup-herdr.sh"
-        let fallbackPath = NSHomeDirectory() + "/Code/MuH/Resources/scripts/setup-herdr.sh"
+        let scriptName = selectedBackend == .luvus ? "setup-luvus.sh" : "setup-herdr.sh"
+        let scriptPath = (Bundle.main.resourcePath ?? "") + "/\(scriptName)"
+        let fallbackPath = NSHomeDirectory() + "/Code/MuH/Resources/scripts/\(scriptName)"
         let finalPath = FileManager.default.fileExists(atPath: scriptPath) ? scriptPath : fallbackPath
         return "ssh <user@host> 'bash -s' < \"\(finalPath)\""
+    }
+
+    private var remoteSetupTitle: LocalizedStringResource {
+        selectedBackend == .luvus
+            ? L10n.Settings.Notification.remoteSetupLuvusTitle
+            : L10n.Settings.Notification.remoteSetupTitle
+    }
+
+    private var remoteSetupDesc: LocalizedStringResource {
+        selectedBackend == .luvus
+            ? L10n.Settings.Notification.remoteSetupLuvusDesc
+            : L10n.Settings.Notification.remoteSetupDesc
     }
 
     var body: some View {
@@ -76,9 +97,20 @@ struct NotificationSectionView: View {
                 }
             }
 
-            Section(header: Text(L10n.Settings.Notification.remoteSetupTitle)) {
+            Section(header: Text(remoteSetupTitle)) {
                 VStack(alignment: .leading, spacing: DT.Space.xs) {
-                    Text(L10n.Settings.Notification.remoteSetupDesc)
+                    Picker(
+                        String(localized: L10n.Settings.Notification.backendSelector.withLocale(locale)),
+                        selection: $selectedBackend
+                    ) {
+                        ForEach(RemoteMultiplexerKind.allCases) { kind in
+                            Text(kind.rawValue).tag(kind)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.bottom, 2)
+
+                    Text(remoteSetupDesc)
                         .font(Font(DT.Font.small))
                         .foregroundColor(Color(theme.textSecondary))
 

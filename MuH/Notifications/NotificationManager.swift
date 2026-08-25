@@ -49,8 +49,8 @@ func notificationKind(
     }
 
     let hasNewDone = newCounts.done > oldCounts.done
-    let finishedAll = oldCounts.working > 0 && newCounts.working == 0 && newCounts.done > 0
-    if notifyOnCompleted && (hasNewDone || finishedAll) {
+    let finishedAllWorking = oldCounts.working > 0 && newCounts.working == 0 && newCounts.blocked == 0
+    if notifyOnCompleted && (hasNewDone || finishedAllWorking) {
         return .completed
     }
 
@@ -128,8 +128,9 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     }
 
     // MARK: - State Inspection & Notification Dispatch
-    func handleTitleChange(host: HostItem, oldTitle: String?, newTitle: String) {
+    func handleTitleChange(host: HostItem, oldTitle: String?, newTitle: String, isForeground: Bool = false) {
         guard enableNotifications else { return }
+        guard !isForeground else { return }
 
         switch notificationKind(
             oldTitle: oldTitle,

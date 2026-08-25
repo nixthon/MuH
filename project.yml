@@ -58,6 +58,12 @@ targets:
             cp "$SCRIPT_SRC" "$SCRIPT_DST"
             chmod +x "$SCRIPT_DST"
           fi
+          LUVUS_SCRIPT_SRC="${PROJECT_DIR}/Resources/scripts/setup-luvus.sh"
+          LUVUS_SCRIPT_DST="${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/setup-luvus.sh"
+          if [ -f "$LUVUS_SCRIPT_SRC" ]; then
+            cp "$LUVUS_SCRIPT_SRC" "$LUVUS_SCRIPT_DST"
+            chmod +x "$LUVUS_SCRIPT_DST"
+          fi
 
           # Keep the app launchable when the build runs under a restrictive
           # umask (for example 077 in CI or agent shells).
@@ -66,6 +72,7 @@ targets:
           find "$APP_BUNDLE" -type f -exec chmod 644 {} +
           chmod 755 "${TARGET_BUILD_DIR}/${EXECUTABLE_PATH}"
           [ ! -f "$SCRIPT_DST" ] || chmod 755 "$SCRIPT_DST"
+          [ ! -f "$LUVUS_SCRIPT_DST" ] || chmod 755 "$LUVUS_SCRIPT_DST"
         basedOnDependencyAnalysis: false
     settings:
       base:

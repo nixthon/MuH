@@ -87,6 +87,7 @@ struct MuHApp: App {
     }
 
     @CommandsBuilder private var strippedDefaultCommands: some Commands {
+        CommandGroup(replacing: .systemServices)    { EmptyView() }
         CommandGroup(replacing: .saveItem)          { EmptyView() }
         CommandGroup(replacing: .textEditing)       { EmptyView() }
         CommandGroup(replacing: .textFormatting)    { EmptyView() }
@@ -118,11 +119,17 @@ struct MuHApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.servicesMenu = nil
         guard let mainMenu = NSApp.mainMenu else { return }
         let topLevelMenusToRemove: Set<String> = [
             "Format", "View", "格式", "显示", "视图"
         ]
         mainMenu.items.removeAll { topLevelMenusToRemove.contains($0.title) }
+
+        if let appMenu = mainMenu.items.first?.submenu {
+            let serviceTitles: Set<String> = ["Services", "服务"]
+            appMenu.items.removeAll { serviceTitles.contains($0.title) || $0.submenu == NSApp.servicesMenu }
+        }
     }
 }
 

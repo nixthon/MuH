@@ -84,7 +84,13 @@ struct ContentView: View {
                 titleStoreRef.update(hostId: hostId, title: title)
                 if !suppressInitialStatus,
                    let host = storeRef.hosts.first(where: { $0.id == hostId }) {
-                    NotificationManager.shared.handleTitleChange(host: host, oldTitle: oldTitle, newTitle: title)
+                    let isForeground = NSApp.isActive && (storeRef.selectedId == hostId)
+                    NotificationManager.shared.handleTitleChange(
+                        host: host,
+                        oldTitle: oldTitle,
+                        newTitle: title,
+                        isForeground: isForeground
+                    )
                 }
             }
 

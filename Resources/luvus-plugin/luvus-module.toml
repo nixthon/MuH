@@ -1,0 +1,35 @@
+id = "muh.status-title"
+name = "MuH Status Title"
+version = "0.1.0"
+min_luvus_version = "0.8.3"
+description = "Sync aggregated agent status indicators to outer terminal window title for MuH"
+platforms = ["linux", "macos", "windows"]
+
+[[startup]]
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "pane.agent_status_changed"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "pane.created"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "pane.closed"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "workspace.created"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "workspace.closed"
+command = ["bash", "run.sh"]
+
+[[actions]]
+id = "sync"
+title = "Sync status title"
+contexts = ["workspace"]
+command = ["bash", "run.sh"]

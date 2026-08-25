@@ -95,6 +95,9 @@ enum L10n {
 
             static let remoteSetupTitle       = LocalizedStringResource("settings.notification.remoteSetupTitle")
             static let remoteSetupDesc        = LocalizedStringResource("settings.notification.remoteSetupDesc")
+            static let remoteSetupLuvusTitle  = LocalizedStringResource("settings.notification.remoteSetupLuvusTitle")
+            static let remoteSetupLuvusDesc   = LocalizedStringResource("settings.notification.remoteSetupLuvusDesc")
+            static let backendSelector        = LocalizedStringResource("settings.notification.backendSelector")
             static let copyCommand            = LocalizedStringResource("settings.notification.copyCommand")
             static let copied                 = LocalizedStringResource("settings.notification.copied")
         }

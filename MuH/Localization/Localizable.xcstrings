@@ -2551,6 +2551,57 @@
         }
       }
     },
+    "settings.notification.remoteSetupLuvusTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Host Luvus Setup"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "远程主机 Luvus 初始化"
+          }
+        }
+      }
+    },
+    "settings.notification.remoteSetupLuvusDesc": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run this command to automatically configure Luvus and deploy the MuH status module on remote servers."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在远程服务器上运行此命令，一键配置 Luvus 并部署 MuH 状态感知模块。"
+          }
+        }
+      }
+    },
+    "settings.notification.backendSelector": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent Multiplexer"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent 复用器"
+          }
+        }
+      }
+    },
     "settings.notification.copyCommand": {
       "extractionState": "manual",
       "localizations": {
