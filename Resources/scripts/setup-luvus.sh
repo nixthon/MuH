@@ -70,6 +70,14 @@ LUVUS_BIN=$(command -v luvus)
 LUVUS_VERSION=$(luvus --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || echo "unknown")
 ok "Found Luvus at $LUVUS_BIN (v${LUVUS_VERSION})"
 
+# Ensure luvus is accessible in standard non-interactive SSH paths
+if [ -d "$HOME/.cargo/bin" ] && [ "$LUVUS_BIN" != "$HOME/.cargo/bin/luvus" ]; then
+    ln -sf "$LUVUS_BIN" "$HOME/.cargo/bin/luvus" 2>/dev/null || true
+fi
+if [ -d "$HOME/bin" ] && [ "$LUVUS_BIN" != "$HOME/bin/luvus" ]; then
+    ln -sf "$LUVUS_BIN" "$HOME/bin/luvus" 2>/dev/null || true
+fi
+
 # Check Node.js
 if ! command -v node >/dev/null 2>&1; then
     err "Node.js is not installed or not in PATH!"
