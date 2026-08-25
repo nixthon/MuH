@@ -135,27 +135,49 @@ function findTargetTTY() {
 }
 
 /**
- * Writes OSC 0 title escape sequence directly to host terminal PTY.
+ * Writes OSC 0 title escape sequence directly to host terminal PTYs (non-blocking).
  */
 function writeTerminalTitle(title) {
   const osc = `\x1b]0;${title}\x07`;
+  let successCount = 0;
+
+  // 1. Direct target TTY from environment or parent tree
   const ttyPath = findTargetTTY();
   if (ttyPath) {
     try {
-      fs.writeFileSync(ttyPath, osc);
-      return true;
-    } catch (err) {
-      console.error(`[muh.status-title] failed writing to ${ttyPath}: ${err.message}`);
-    }
+      const fd = fs.openSync(ttyPath, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+      fs.writeSync(fd, osc);
+      fs.closeSync(fd);
+      successCount++;
+    } catch (_) {}
   }
 
-  // Fallback to process.stdout
+  // 2. Broadcast non-blockingly to all active user PTYs (/dev/pts/* on Linux, /dev/ttys* on macOS)
+  try {
+    const ptsDir = '/dev/pts';
+    if (fs.existsSync(ptsDir)) {
+      const entries = fs.readdirSync(ptsDir);
+      for (const entry of entries) {
+        if (/^\d+$/.test(entry)) {
+          const pty = path.join(ptsDir, entry);
+          try {
+            const fd = fs.openSync(pty, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+            fs.writeSync(fd, osc);
+            fs.closeSync(fd);
+            successCount++;
+          } catch (_) {}
+        }
+      }
+    }
+  } catch (_) {}
+
+  // 3. Fallback to process.stdout
   try {
     process.stdout.write(osc);
-    return true;
-  } catch (_) {
-    return false;
-  }
+    successCount++;
+  } catch (_) {}
+
+  return successCount > 0;
 }
 
 /**
@@ -167,19 +189,25 @@ function syncViaSocket(socketPath, hostname) {
     let settled = false;
     let buffer = '';
 
+    const client = net.createConnection(socketPath);
+
+    const hardTimer = setTimeout(() => {
+      finish(false);
+    }, 500);
+
     const finish = (result) => {
       if (settled) return;
       settled = true;
+      clearTimeout(hardTimer);
       try {
         client.destroy();
       } catch (_) {}
       resolve(result);
     };
 
-    const client = net.createConnection(socketPath);
-    client.setTimeout(2000, () => finish(false));
-
+    client.setTimeout(500, () => finish(false));
     client.on('error', () => finish(false));
+    client.on('close', () => finish(false));
 
     client.on('connect', () => {
       // Step 1: Request agent list over UHP

@@ -10,11 +10,12 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------------------
-# 0. Ensure Full PATH in Non-interactive SSH Shells
+# 0. Ensure Full PATH in Non-interactive and Interactive Shells
 # ------------------------------------------------------------------------------
 if [ -f "$HOME/.profile" ]; then (source "$HOME/.profile" 2>/dev/null) && source "$HOME/.profile" 2>/dev/null || true; fi
 if [ -f "$HOME/.bash_profile" ]; then (source "$HOME/.bash_profile" 2>/dev/null) && source "$HOME/.bash_profile" 2>/dev/null || true; fi
 if [ -f "$HOME/.bashrc" ]; then (source "$HOME/.bashrc" 2>/dev/null) && source "$HOME/.bashrc" 2>/dev/null || true; fi
+if [ -f "$HOME/.zshenv" ]; then (source "$HOME/.zshenv" 2>/dev/null) && source "$HOME/.zshenv" 2>/dev/null || true; fi
 
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin:/usr/local/bin:$HOME/.pixi/bin:$HOME/.pixi/envs/default/bin:$HOME/.pixi/envs/nodejs/bin:$HOME/.asdf/shims:$HOME/.fnm/current/bin:$PATH"
 
@@ -40,7 +41,16 @@ probe_node() {
         command -v node
         return 0
     fi
-    for candidate in "$HOME/.nvm/versions/node"/*"/bin/node" "$HOME/.fnm/current/bin/node" "$HOME/.asdf/shims/node" "$HOME/.pixi/bin/node" "$HOME/.pixi/envs/nodejs/bin/node" "$HOME/.local/bin/node" "/usr/local/bin/node" "/opt/homebrew/bin/node"; do
+    for candidate in \
+        "$HOME/.pixi/bin/node" \
+        "$HOME/.pixi/envs/nodejs/bin/node" \
+        "$HOME/.pixi/envs/default/bin/node" \
+        "$HOME/.nvm/versions/node"/*"/bin/node" \
+        "$HOME/.fnm/current/bin/node" \
+        "$HOME/.asdf/shims/node" \
+        "$HOME/.local/bin/node" \
+        "/usr/local/bin/node" \
+        "/opt/homebrew/bin/node"; do
         if [ -x "$candidate" ]; then
             export PATH="$(dirname "$candidate"):$PATH"
             echo "$candidate"
@@ -99,9 +109,10 @@ LUVUS_VERSION=$("$LUVUS_BIN" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' 
 ok "Found Luvus at $LUVUS_BIN (v${LUVUS_VERSION})"
 
 # ------------------------------------------------------------------------------
-# 2. Reinforce Non-Interactive SSH Compatibility & PATH
+# 2. Reinforce Non-Interactive SSH Compatibility & Shell PATH Injection (bash/zsh)
 # ------------------------------------------------------------------------------
-# Ensure luvus is accessible in standard non-interactive SSH paths
+info "Configuring non-interactive shell PATH compatibility..."
+
 mkdir -p "$HOME/.local/bin"
 if [ -d "$HOME/.cargo/bin" ] && [ "$LUVUS_BIN" != "$HOME/.cargo/bin/luvus" ]; then
     ln -sf "$LUVUS_BIN" "$HOME/.cargo/bin/luvus" 2>/dev/null || true
@@ -110,25 +121,37 @@ if [ -d "$HOME/bin" ] && [ "$LUVUS_BIN" != "$HOME/bin/luvus" ]; then
     ln -sf "$LUVUS_BIN" "$HOME/bin/luvus" 2>/dev/null || true
 fi
 
-# Ensure ~/.bashrc or ~/.bash_profile has ~/.local/bin in PATH
-ensure_path_in_file() {
-    local file="$1"
-    if [ -f "$file" ]; then
-        if ! grep -Eq '(^|:|\$HOME/|~/)(\.local/bin|\.cargo/bin)' "$file"; then
-            printf '\n# Added by MuH / Luvus installer for SSH compatibility\nexport PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin:$PATH"\n' >> "$file"
-        fi
+# Ensure all relevant shell rc files export the full toolchain PATH
+PATH_INJECTION='export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin:/usr/local/bin:$HOME/.pixi/bin:$HOME/.pixi/envs/default/bin:$HOME/.pixi/envs/nodejs/bin:$HOME/.asdf/shims:$HOME/.fnm/current/bin:$PATH"'
+
+ensure_shell_path() {
+    local rcfile="$1"
+    if [ ! -f "$rcfile" ]; then
+        touch "$rcfile" 2>/dev/null || return 0
+    fi
+    if ! grep -Fq '.pixi/bin' "$rcfile" 2>/dev/null; then
+        printf '\n# Added by MuH / Luvus installer\n%s\n' "$PATH_INJECTION" >> "$rcfile"
+        ok "Injected toolchain PATH into $rcfile"
+    else
+        ok "PATH already configured in $rcfile"
     fi
 }
-ensure_path_in_file "$HOME/.bashrc"
-ensure_path_in_file "$HOME/.bashrc.local"
-ensure_path_in_file "$HOME/.profile"
-ensure_path_in_file "$HOME/.zshrc"
+
+# Bash & POSIX shells
+ensure_shell_path "$HOME/.bashrc"
+ensure_shell_path "$HOME/.profile"
+[ -f "$HOME/.bash_profile" ] && ensure_shell_path "$HOME/.bash_profile"
+[ -f "$HOME/.bashrc.local" ] && ensure_shell_path "$HOME/.bashrc.local"
+
+# Zsh (critical: .zshenv is read for all non-interactive SSH commands)
+ensure_shell_path "$HOME/.zshenv"
+[ -f "$HOME/.zshrc" ] && ensure_shell_path "$HOME/.zshrc"
 
 # Check Node.js
 NODE_BIN=$(probe_node || true)
 if [ -z "$NODE_BIN" ]; then
-    err "Node.js is not installed or not in PATH!"
-    printf "The MuH status module requires Node.js runtime. Please install Node.js (v18+ recommended).\n\n"
+    err "Node.js is not installed or not found on PATH!"
+    printf "The MuH status module requires Node.js runtime (v18+ recommended).\n\n"
     exit 1
 fi
 
@@ -390,27 +413,49 @@ function findTargetTTY() {
 }
 
 /**
- * Writes OSC 0 title escape sequence directly to host terminal PTY.
+ * Writes OSC 0 title escape sequence directly to host terminal PTYs (non-blocking).
  */
 function writeTerminalTitle(title) {
   const osc = `\x1b]0;${title}\x07`;
+  let successCount = 0;
+
+  // 1. Direct target TTY from environment or parent tree
   const ttyPath = findTargetTTY();
   if (ttyPath) {
     try {
-      fs.writeFileSync(ttyPath, osc);
-      return true;
-    } catch (err) {
-      console.error(`[muh.status-title] failed writing to ${ttyPath}: ${err.message}`);
-    }
+      const fd = fs.openSync(ttyPath, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+      fs.writeSync(fd, osc);
+      fs.closeSync(fd);
+      successCount++;
+    } catch (_) {}
   }
 
-  // Fallback to process.stdout
+  // 2. Broadcast non-blockingly to all active user PTYs (/dev/pts/* on Linux, /dev/ttys* on macOS)
+  try {
+    const ptsDir = '/dev/pts';
+    if (fs.existsSync(ptsDir)) {
+      const entries = fs.readdirSync(ptsDir);
+      for (const entry of entries) {
+        if (/^\d+$/.test(entry)) {
+          const pty = path.join(ptsDir, entry);
+          try {
+            const fd = fs.openSync(pty, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+            fs.writeSync(fd, osc);
+            fs.closeSync(fd);
+            successCount++;
+          } catch (_) {}
+        }
+      }
+    }
+  } catch (_) {}
+
+  // 3. Fallback to process.stdout
   try {
     process.stdout.write(osc);
-    return true;
-  } catch (_) {
-    return false;
-  }
+    successCount++;
+  } catch (_) {}
+
+  return successCount > 0;
 }
 
 /**
@@ -422,19 +467,25 @@ function syncViaSocket(socketPath, hostname) {
     let settled = false;
     let buffer = '';
 
+    const client = net.createConnection(socketPath);
+
+    const hardTimer = setTimeout(() => {
+      finish(false);
+    }, 500);
+
     const finish = (result) => {
       if (settled) return;
       settled = true;
+      clearTimeout(hardTimer);
       try {
         client.destroy();
       } catch (_) {}
       resolve(result);
     };
 
-    const client = net.createConnection(socketPath);
-    client.setTimeout(2000, () => finish(false));
-
+    client.setTimeout(500, () => finish(false));
     client.on('error', () => finish(false));
+    client.on('close', () => finish(false));
 
     client.on('connect', () => {
       // Step 1: Request agent list over UHP
