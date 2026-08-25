@@ -19,24 +19,36 @@ if [ -f "$HOME/.bashrc" ]; then (source "$HOME/.bashrc" 2>/dev/null) && source "
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin:/usr/local/bin:$HOME/.pixi/bin:$HOME/.pixi/envs/default/bin:$HOME/.pixi/envs/nodejs/bin:$HOME/.asdf/shims:$HOME/.fnm/current/bin:$PATH"
 
 # Probe luvus binary location
-if ! command -v luvus >/dev/null 2>&1; then
+probe_luvus() {
+    if command -v luvus >/dev/null 2>&1; then
+        command -v luvus
+        return 0
+    fi
     for candidate in "$HOME/.local/bin/luvus" "$HOME/.cargo/bin/luvus" "$HOME/bin/luvus" "/usr/local/bin/luvus" "/opt/homebrew/bin/luvus"; do
         if [ -x "$candidate" ]; then
             export PATH="$(dirname "$candidate"):$PATH"
-            break
+            echo "$candidate"
+            return 0
         fi
     done
-fi
+    return 1
+}
 
 # Probe node binary location
-if ! command -v node >/dev/null 2>&1; then
+probe_node() {
+    if command -v node >/dev/null 2>&1; then
+        command -v node
+        return 0
+    fi
     for candidate in "$HOME/.nvm/versions/node"/*"/bin/node" "$HOME/.fnm/current/bin/node" "$HOME/.asdf/shims/node" "$HOME/.pixi/bin/node" "$HOME/.pixi/envs/nodejs/bin/node" "$HOME/.local/bin/node" "/usr/local/bin/node" "/opt/homebrew/bin/node"; do
         if [ -x "$candidate" ]; then
             export PATH="$(dirname "$candidate"):$PATH"
-            break
+            echo "$candidate"
+            return 0
         fi
     done
-fi
+    return 1
+}
 
 COLOR_GREEN='\033[0;32m'
 COLOR_YELLOW='\033[1;33m'
@@ -55,22 +67,41 @@ printf "${COLOR_BOLD}   MuH ➔ Luvus Agent Status Initializer  ${COLOR_NC}\n"
 printf "${COLOR_BOLD}========================================${COLOR_NC}\n\n"
 
 # ------------------------------------------------------------------------------
-# 1. Environment & Dependency Checks
+# 1. Environment & Dependency Checks (Auto-install Luvus if missing)
 # ------------------------------------------------------------------------------
 info "Checking environment dependencies..."
 
-# Check Luvus
-if ! command -v luvus >/dev/null 2>&1; then
-    err "Luvus is not installed or not in PATH!"
-    printf "Please install Luvus first (e.g. cargo install --locked luvus or curl -fsSL https://luvus.dev/install.sh | sh).\n\n"
-    exit 1
+LUVUS_BIN=$(probe_luvus || true)
+
+if [ -z "$LUVUS_BIN" ]; then
+    info "Luvus is not installed. Installing Luvus automatically via official installer..."
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL https://luvus.dev/install.sh | sh
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO- https://luvus.dev/install.sh | sh
+    else
+        err "Neither curl nor wget found! Please install curl or wget first."
+        exit 1
+    fi
+
+    # Re-probe after installation
+    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin:/usr/local/bin:$PATH"
+    LUVUS_BIN=$(probe_luvus || true)
+    if [ -z "$LUVUS_BIN" ]; then
+        err "Luvus installation completed but executable could not be located on PATH."
+        exit 1
+    fi
+    ok "Successfully installed Luvus!"
 fi
 
-LUVUS_BIN=$(command -v luvus)
-LUVUS_VERSION=$(luvus --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || echo "unknown")
+LUVUS_VERSION=$("$LUVUS_BIN" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || echo "unknown")
 ok "Found Luvus at $LUVUS_BIN (v${LUVUS_VERSION})"
 
+# ------------------------------------------------------------------------------
+# 2. Reinforce Non-Interactive SSH Compatibility & PATH
+# ------------------------------------------------------------------------------
 # Ensure luvus is accessible in standard non-interactive SSH paths
+mkdir -p "$HOME/.local/bin"
 if [ -d "$HOME/.cargo/bin" ] && [ "$LUVUS_BIN" != "$HOME/.cargo/bin/luvus" ]; then
     ln -sf "$LUVUS_BIN" "$HOME/.cargo/bin/luvus" 2>/dev/null || true
 fi
@@ -78,19 +109,33 @@ if [ -d "$HOME/bin" ] && [ "$LUVUS_BIN" != "$HOME/bin/luvus" ]; then
     ln -sf "$LUVUS_BIN" "$HOME/bin/luvus" 2>/dev/null || true
 fi
 
+# Ensure ~/.bashrc or ~/.bash_profile has ~/.local/bin in PATH
+ensure_path_in_file() {
+    local file="$1"
+    if [ -f "$file" ]; then
+        if ! grep -Eq '(^|:|\$HOME/|~/)(\.local/bin|\.cargo/bin)' "$file"; then
+            printf '\n# Added by MuH / Luvus installer for SSH compatibility\nexport PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/bin:$PATH"\n' >> "$file"
+        fi
+    fi
+}
+ensure_path_in_file "$HOME/.bashrc"
+ensure_path_in_file "$HOME/.bashrc.local"
+ensure_path_in_file "$HOME/.profile"
+ensure_path_in_file "$HOME/.zshrc"
+
 # Check Node.js
-if ! command -v node >/dev/null 2>&1; then
+NODE_BIN=$(probe_node || true)
+if [ -z "$NODE_BIN" ]; then
     err "Node.js is not installed or not in PATH!"
     printf "The MuH status module requires Node.js runtime. Please install Node.js (v18+ recommended).\n\n"
     exit 1
 fi
 
-NODE_BIN=$(command -v node)
-NODE_VERSION=$(node -v 2>&1 || echo "unknown")
+NODE_VERSION=$("$NODE_BIN" -v 2>&1 || echo "unknown")
 ok "Found Node.js at $NODE_BIN (${NODE_VERSION})"
 
 # ------------------------------------------------------------------------------
-# 2. Configure ~/.config/luvus/config.toml
+# 3. Configure ~/.config/luvus/config.toml
 # ------------------------------------------------------------------------------
 info "Configuring Luvus settings..."
 
@@ -112,7 +157,7 @@ EOF
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Deploy MuH Status-Title Module
+# 4. Deploy MuH Status-Title Module
 # ------------------------------------------------------------------------------
 info "Installing MuH status-title module..."
 
@@ -608,15 +653,15 @@ chmod +x "$MODULE_DIR/index.js" "$MODULE_DIR/run.sh"
 ok "Module files installed to $MODULE_DIR"
 
 # ------------------------------------------------------------------------------
-# 4. Link & Activate Module in Luvus
+# 5. Link & Activate Module in Luvus
 # ------------------------------------------------------------------------------
 info "Linking module into Luvus..."
-module_list_output=$(luvus module list 2>&1 || true)
+module_list_output=$("$LUVUS_BIN" module list 2>&1 || true)
 if echo "$module_list_output" | grep -Fq 'muh.status-title'; then
     ok "Module muh.status-title is already registered in Luvus."
-    luvus module enable "muh.status-title" >/dev/null 2>&1 || true
+    "$LUVUS_BIN" module enable "muh.status-title" >/dev/null 2>&1 || true
 else
-    if ! link_output=$(luvus module link "$MODULE_DIR" 2>&1); then
+    if ! link_output=$("$LUVUS_BIN" module link "$MODULE_DIR" 2>&1); then
         err "Failed to register module:"
         printf '%s\n' "$link_output"
         exit 1
@@ -624,7 +669,7 @@ else
 fi
 
 # Verify link
-module_list_output=$(luvus module list 2>&1 || true)
+module_list_output=$("$LUVUS_BIN" module list 2>&1 || true)
 if echo "$module_list_output" | grep -Fq 'muh.status-title'; then
     ok "Module muh.status-title successfully verified in Luvus!"
 else
