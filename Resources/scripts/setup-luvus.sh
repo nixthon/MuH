@@ -77,15 +77,27 @@ printf "${COLOR_BOLD}   MuH ➔ Luvus Agent Status Initializer  ${COLOR_NC}\n"
 printf "${COLOR_BOLD}========================================${COLOR_NC}\n\n"
 
 # ------------------------------------------------------------------------------
-# 1. Environment & Dependency Checks (Auto-install Luvus if missing)
+# 1. Environment & Dependency Checks (Auto-install/Upgrade Luvus to v0.13.1)
 # ------------------------------------------------------------------------------
 info "Checking environment dependencies..."
 
+TARGET_LUVUS_VERSION="0.13.1"
 LUVUS_BIN=$(probe_luvus || true)
 
+need_install=0
 if [ -z "$LUVUS_BIN" ]; then
-    info "Luvus is not installed. Installing Luvus automatically via official installer..."
-    export LUVUS_VERSION="${LUVUS_VERSION:-v0.12.0}"
+    need_install=1
+else
+    CURRENT_VERSION=$("$LUVUS_BIN" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || echo "0.0.0")
+    if [ "$CURRENT_VERSION" != "$TARGET_LUVUS_VERSION" ]; then
+        info "Luvus version is v${CURRENT_VERSION}. Target is v${TARGET_LUVUS_VERSION}."
+        need_install=1
+    fi
+fi
+
+if [ "$need_install" = "1" ]; then
+    info "Installing / Upgrading Luvus to v${TARGET_LUVUS_VERSION} via official installer..."
+    export LUVUS_VERSION="v${TARGET_LUVUS_VERSION}"
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL https://luvus.dev/install.sh | sh
     elif command -v wget >/dev/null 2>&1; then
@@ -102,7 +114,7 @@ if [ -z "$LUVUS_BIN" ]; then
         err "Luvus installation completed but executable could not be located on PATH."
         exit 1
     fi
-    ok "Successfully installed Luvus!"
+    ok "Successfully installed/upgraded Luvus!"
 fi
 
 LUVUS_VERSION=$("$LUVUS_BIN" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || echo "unknown")
@@ -213,11 +225,39 @@ on = "pane.closed"
 command = ["bash", "run.sh"]
 
 [[events]]
+on = "pane.moved"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "tab.created"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "tab.closed"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "tab.focused"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "tab.moved"
+command = ["bash", "run.sh"]
+
+[[events]]
 on = "workspace.created"
 command = ["bash", "run.sh"]
 
 [[events]]
 on = "workspace.closed"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "workspace.focused"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "workspace.updated"
 command = ["bash", "run.sh"]
 
 [[actions]]
@@ -293,19 +333,29 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const STATUS_CONFIG = {
-  blocked: { weight: 1, symbol: '×' }, // 🔴 阻塞 / 需要确认
-  done:    { weight: 2, symbol: '✓' }, // 🟢 完成待查看
-  working: { weight: 3, symbol: '◐' }, // 🟡 正在执行
-  idle:    { weight: 4, symbol: '○' }, // ⚪️ 空闲
-  unknown: { weight: 5, symbol: '·' }, // ⚪️ 未知
+  blocked: { weight: 1, symbol: '×' }, // 🔴 阻塞 / 需要人类介入确认
+  done:    { weight: 2, symbol: '✓' }, // 🟢 任务完成待查看
+  working: { weight: 3, symbol: '◐' }, // 🟡 正在执行中
+  idle:    { weight: 4, symbol: '○' }, // 🟢 存活空闲待命 (绿色圆圈)
+  unknown: { weight: 5, symbol: '·' }, // 未知状态
 };
 
 const MAX_INDICATORS = 10;
 
 /**
  * Formats a list of agent status strings into a concise symbols string.
- * @param {string[]} statuses Array of agent status strings (e.g. ['blocked', 'working', 'done'])
- * @returns {string} Combined symbols string (e.g. "×✓◐")
+ * - blocked (×): 🔴 阻塞需确认
+ * - done (✓): 🟢 完成待查看
+ * - working (◐): 🟡 正在执行
+ * - idle (○): 🟢 存活空闲待命 (绿色圆圈)
+ * 
+ * Rules:
+ * - Each symbol represents one living agent in the session.
+ * - When agent count is 0 (no agents in session), returns '' so title formats as "hostname: idle" (zero symbols).
+ * - When agents are present, sorted by priority (blocked > done > working > idle) and capped at MAX_INDICATORS (10).
+ * 
+ * @param {string[]} statuses Array of agent status strings (e.g. ['blocked', 'working', 'done', 'idle'])
+ * @returns {string} Combined symbols string (e.g. "×✓◐○")
  */
 function formatAgentStatusSymbols(statuses) {
   if (!statuses || statuses.length === 0) {
@@ -343,9 +393,12 @@ function resolveSocketPath() {
   }
   const home = os.homedir();
   const candidates = [
+    path.join(home, '.luvus', 'luvus.sock'),
+    path.join(home, '.luvus', 'luvus-client.sock'),
     path.join(home, '.local', 'share', 'luvus', 'luvus.sock'),
     path.join(home, '.config', 'luvus', 'luvus.sock'),
     path.join('/tmp', `luvus-${process.getuid?.() || 1000}`, 'luvus.sock'),
+    path.join('/tmp', 'luvus.sock'),
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) {
@@ -357,6 +410,8 @@ function resolveSocketPath() {
 
 /**
  * Finds the controlling PTY device of the outer terminal session.
+ * Strictly resolves to the single TTY belonging to this Luvus session to prevent
+ * cross-talk across hosts/tabs.
  */
 function findTargetTTY() {
   // 1. Direct environment variable
@@ -393,15 +448,20 @@ function findTargetTTY() {
     }
   }
 
-  // 4. Scan active luvus processes with a valid TTY
+  // 4. Scan the foreground luvus client process attached to a TTY for this session
   try {
-    const out = execSync('ps -eo tty=,comm=', { encoding: 'utf8' });
+    const currentSession = process.env.LUVUS_SESSION || '';
+    const out = execSync('ps -eo pid=,tty=,args=', { encoding: 'utf8' });
     const lines = out.split('\n');
     for (const line of lines) {
       const parts = line.trim().split(/\s+/);
-      if (parts.length >= 2) {
-        const [tty, comm] = parts;
-        if (comm.toLowerCase().includes('luvus') && tty && tty !== '?' && tty !== '??') {
+      if (parts.length >= 3) {
+        const [pid, tty, ...cmdParts] = parts;
+        const cmd = cmdParts.join(' ');
+        if (cmd.includes('luvus') && !cmd.includes('server') && !cmd.includes('module') && tty && tty !== '?' && tty !== '??') {
+          if (currentSession && cmd.includes('--session') && !cmd.includes(currentSession)) {
+            continue;
+          }
           const ttyPath = tty.startsWith('/dev/') ? tty : `/dev/${tty}`;
           if (fs.existsSync(ttyPath)) return ttyPath;
         }
@@ -413,49 +473,30 @@ function findTargetTTY() {
 }
 
 /**
- * Writes OSC 0 title escape sequence directly to host terminal PTYs (non-blocking).
+ * Writes OSC 0 title escape sequence strictly to the target host terminal PTY.
+ * No global broadcasting to ensure zero cross-host interference.
  */
 function writeTerminalTitle(title) {
   const osc = `\x1b]0;${title}\x07`;
-  let successCount = 0;
 
-  // 1. Direct target TTY from environment or parent tree
+  // 1. Direct target TTY belonging to this session
   const ttyPath = findTargetTTY();
   if (ttyPath) {
     try {
       const fd = fs.openSync(ttyPath, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
       fs.writeSync(fd, osc);
       fs.closeSync(fd);
-      successCount++;
+      return true;
     } catch (_) {}
   }
 
-  // 2. Broadcast non-blockingly to all active user PTYs (/dev/pts/* on Linux, /dev/ttys* on macOS)
-  try {
-    const ptsDir = '/dev/pts';
-    if (fs.existsSync(ptsDir)) {
-      const entries = fs.readdirSync(ptsDir);
-      for (const entry of entries) {
-        if (/^\d+$/.test(entry)) {
-          const pty = path.join(ptsDir, entry);
-          try {
-            const fd = fs.openSync(pty, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
-            fs.writeSync(fd, osc);
-            fs.closeSync(fd);
-            successCount++;
-          } catch (_) {}
-        }
-      }
-    }
-  } catch (_) {}
-
-  // 3. Fallback to process.stdout
+  // 2. Fallback to process.stdout
   try {
     process.stdout.write(osc);
-    successCount++;
+    return true;
   } catch (_) {}
 
-  return successCount > 0;
+  return false;
 }
 
 /**
@@ -634,9 +675,19 @@ function runSelfTests() {
 
   const testCases = [
     {
-      name: 'Empty agents',
+      name: '0 agents (empty array) emits empty symbols string for hostname: idle',
       input: [],
       expected: '',
+    },
+    {
+      name: 'Single agent idle (green circle)',
+      input: ['idle'],
+      expected: '○',
+    },
+    {
+      name: 'Two agents idle (two green circles)',
+      input: ['idle', 'idle'],
+      expected: '○○',
     },
     {
       name: 'Single agent working',
@@ -649,7 +700,7 @@ function runSelfTests() {
       expected: '××✓✓',
     },
     {
-      name: 'Mixed states with working and idle',
+      name: 'Mixed states with working, blocked, done, and idle',
       input: ['idle', 'working', 'blocked', 'done'],
       expected: '×✓◐○',
     },

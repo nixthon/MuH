@@ -21,11 +21,39 @@ on = "pane.closed"
 command = ["bash", "run.sh"]
 
 [[events]]
+on = "pane.moved"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "tab.created"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "tab.closed"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "tab.focused"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "tab.moved"
+command = ["bash", "run.sh"]
+
+[[events]]
 on = "workspace.created"
 command = ["bash", "run.sh"]
 
 [[events]]
 on = "workspace.closed"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "workspace.focused"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "workspace.updated"
 command = ["bash", "run.sh"]
 
 [[actions]]

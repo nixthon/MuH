@@ -23,7 +23,7 @@ struct AppTheme: Equatable {
     let accentMuted: NSColor
 
     // Status
-    let success: NSColor         // 完成/空闲（绿色）
+    let success: NSColor         // 完成 / 存活空闲（绿色）
     let danger: NSColor          // 阻塞/错误（红色）
 }
 

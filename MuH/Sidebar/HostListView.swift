@@ -623,19 +623,19 @@ private final class HostRowItemView: NSView, NSTextFieldDelegate, NSDraggingSour
             let isSymbol: Bool
             switch char {
             case "×":
-                color = theme.danger                  // 🔴 阻塞
+                color = theme.danger                  // 🔴 阻塞 / 需要确认
                 isSymbol = true
             case "✓", "○":
-                color = theme.success                 // 🟢 完成 / 绿色圆圈
+                color = theme.success                 // 🟢 完成 (✓) / 存活空闲待命 (○)
                 isSymbol = true
             case "●", "◐":
-                color = theme.accent                  // 🟡 运行中/活跃
+                color = theme.accent                  // 🟡 正在执行 (working)
                 isSymbol = true
             case "·":
-                color = theme.textTertiary.withAlphaComponent(0.6) // ⚪️ 未知/普通点
+                color = theme.textTertiary.withAlphaComponent(0.6) // 未知状态点
                 isSymbol = true
             default:
-                color = theme.textTertiary            // 灰色文本 (如 "dev2: ")
+                color = theme.textTertiary            // 灰色文本 (如 "dev2: idle")
                 isSymbol = false
             }
 

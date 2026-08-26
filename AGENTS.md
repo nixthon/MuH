@@ -98,15 +98,27 @@ MuH 的多机全景监控依赖于运行在各机器 Herdr 实例上的状态标
   - `index.js`：Node.js 运行时脚本，调用 Herdr RPC / CLI 获取当前 Agent 列表并格式化输出标题；
   - `README.md`：插件独立说明。
 
-### 2. 状态符号与优先级规则
-插件聚合当前机器上所有 Agent 的生命体征，按严重/关注度优先级排序，并截取前 10 个关键状态符号：
-- <font color="#f87171">🔴 **`×` (blocked)**</font>：阻塞 / 需要人类介入确认（优先级最高，排在最前）；
-- <font color="#4ade80">🟢 **`✓` (done)**</font>：任务完成待查看；
-- <font color="#fbbf24">🟡 **`◐` (working)**</font>：正在执行中；
-- <font color="#94a3b8">⚪ **`○` (idle)**</font>：空闲就绪；
-- <font color="#94a3b8">⚪ **`·` (unknown)**</font>：未知状态。
+### 2. 状态符号与优先级规则 (Status Indicators & Semantic Rules)
 
-**格式示例**：`dev2: ×✓✓◐` 或 `prod-node1: idle`。
+插件聚合当前机器上所有存活的 Agent 生命体征，**1 个符号严格对应 1 个存活的 Agent 实例**，符号总数即为当前存活 Agent 数量（最多截取前 10 个关键符号）：
+
+| 状态符号 | 对应状态 | 语义说明 | 渲染颜色 | 排序权重 (越小越靠前) |
+| :---: | :---: | :--- | :--- | :---: |
+| 🔴 **`×`** | `blocked` | **阻塞 / 需要人类介入确认** | 红色（`theme.danger`） | 1 (最高优) |
+| 🟢 **`✓`** | `done` | **任务完成待查看** | 绿色（`theme.success`） | 2 |
+| 🟡 **`◐`** | `working` | **正在执行中** | 黄色（`theme.accent`） | 3 |
+| 🟢 **`○`** | `idle` | **活着但处于待命空闲状态的 Agent** | 绿色（`theme.success`） | 4 |
+
+#### 明确的状态展示规则：
+1. **符号数量 = 当前活着的 Agent 数量**：
+   - 机器上有 1 个活着的 idle Agent ➔ 输出 1 个绿色圆圈：`dev2: ○`；
+   - 机器上有 2 个活着的 idle Agent ➔ 输出 2 个绿色圆圈：`dev2: ○○`；
+   - 机器上有 1 个正在运行、1 个空闲待命 ➔ 输出：`dev2: ◐○`；
+   - 机器上有 1 个阻塞、2 个完成、1 个空闲 ➔ 输出：`dev2: ×✓✓○`。
+2. **0 个 Agent（无任何存活 Agent）➔ 输出 `hostname: idle`（零符号）**：
+   - 当机器内部关闭了所有 Agent / 没有任何 Agent 实例存活时，**不输出任何符号**，直接显示纯净的文本状态 `dev2: idle`。
+3. **优先级排序与截断**：
+   - 当 Agent 总数较多时，严格按 `× (blocked) > ✓ (done) > ◐ (working) > ○ (idle)` 优先级排序，并截取前 10 个关键状态符号。
 
 ### 3. PTY OSC 0 标题穿透通道
 1. 插件通过 Unix Socket RPC (`client.window_title.set`) 或 Herdr CLI (`herdr terminal title set`) 将格式化后的标题设为 Herdr 终端标题；

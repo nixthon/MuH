@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Platform-macOS%2014.0+-blue?logo=apple" alt="Platform" />
   <img src="https://img.shields.io/badge/Terminal%20Engine-Ghostty%20(libghostty)-orange" alt="Ghostty Engine" />
   <img src="https://img.shields.io/badge/Integration-Herdr%20v0.8.2-green" alt="Herdr Integration" />
-  <img src="https://img.shields.io/badge/Version-v0.1.0-brightgreen" alt="Version" />
+  <img src="https://img.shields.io/badge/Version-v0.1.3-brightgreen" alt="Version" />
   <img src="https://img.shields.io/badge/License-MIT-purple" alt="License" />
 </p>
 
@@ -35,11 +35,12 @@
 ## ✨ 核心特性
 
 ### 1. 🌐 多机 Agent 全景看板
-* **一目了然的生命体征**：侧边栏实时呈现各 Host 的 Agent 状态符号：
-  * <font color="#f87171">🔴 **`×`**</font> **阻塞 / 需要人类介入确认**（自动前置高优显示）
-  * <font color="#4ade80">🟢 **`✓`**</font> **完成待查看**
-  * <font color="#fbbf24">🟡 **`◐`**</font> **正在执行中**
-  * <font color="#94a3b8">⚪ **`○` / `·`**</font> **空闲 / 未知状态**
+* **一目了然的生命体征（符号数量 = 存活 Agent 数量）**：侧边栏实时呈现各 Host 的 Agent 状态符号：
+  * <font color="#f87171">🔴 **`×`**</font> **阻塞 / 需要人类介入确认**（`blocked`，高优排在最前）
+  * <font color="#4ade80">🟢 **`✓`**</font> **完成待查看**（`done`）
+  * <font color="#fbbf24">🟡 **`◐`**</font> **正在执行中**（`working`）
+  * <font color="#4ade80">🟢 **`○`**</font> **活着但处于待命空闲状态的 Agent**（`idle`）
+  * 当 Host 上 **0 个 Agent 存活**时，自动显示纯净文本 `hostname: idle`（零符号）。
 * **点击直达**：点击任意 Host，终端瞬间平滑切换至该机器。
 
 ### 2. ⚡️ 纯 PTY 穿透，零网络配置开销

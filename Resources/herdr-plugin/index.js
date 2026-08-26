@@ -15,19 +15,29 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const STATUS_CONFIG = {
-  blocked: { weight: 1, symbol: '×' }, // 🔴 阻塞 / 需要确认
-  done:    { weight: 2, symbol: '✓' }, // 🟢 完成待查看
-  working: { weight: 3, symbol: '◐' }, // 🟡 正在执行
-  idle:    { weight: 4, symbol: '○' }, // ⚪️ 空闲
-  unknown: { weight: 5, symbol: '·' }, // ⚪️ 未知
+  blocked: { weight: 1, symbol: '×' }, // 🔴 阻塞 / 需要人类介入确认
+  done:    { weight: 2, symbol: '✓' }, // 🟢 任务完成待查看
+  working: { weight: 3, symbol: '◐' }, // 🟡 正在执行中
+  idle:    { weight: 4, symbol: '○' }, // 🟢 存活空闲待命 (绿色圆圈)
+  unknown: { weight: 5, symbol: '·' }, // 未知状态
 };
 
 const MAX_INDICATORS = 10;
 
 /**
  * Formats a list of agent status strings into a concise symbols string.
- * @param {string[]} statuses Array of agent status strings (e.g. ['blocked', 'working', 'done'])
- * @returns {string} Combined symbols string (e.g. "×✓◐")
+ * - blocked (×): 🔴 阻塞需确认
+ * - done (✓): 🟢 完成待查看
+ * - working (◐): 🟡 正在执行
+ * - idle (○): 🟢 存活空闲待命 (绿色圆圈)
+ * 
+ * Rules:
+ * - Each symbol represents one living agent in the session.
+ * - When agent count is 0 (no agents in session), returns '' so title formats as "hostname: idle" (zero symbols).
+ * - When agents are present, sorted by priority (blocked > done > working > idle) and capped at MAX_INDICATORS (10).
+ * 
+ * @param {string[]} statuses Array of agent status strings (e.g. ['blocked', 'working', 'done', 'idle'])
+ * @returns {string} Combined symbols string (e.g. "×✓◐○")
  */
 function formatAgentStatusSymbols(statuses) {
   if (!statuses || statuses.length === 0) {
@@ -67,6 +77,9 @@ function resolveSocketPath() {
   const candidates = [
     path.join(home, '.config', 'herdr', 'herdr.sock'),
     path.join(home, '.local', 'share', 'herdr', 'herdr.sock'),
+    path.join(home, '.herdr', 'herdr.sock'),
+    path.join('/tmp', `herdr-${process.getuid?.() || 1000}`, 'herdr.sock'),
+    path.join('/tmp', 'herdr.sock'),
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) {
@@ -262,9 +275,19 @@ function runSelfTests() {
 
   const testCases = [
     {
-      name: 'Empty agents',
+      name: '0 agents (empty array) emits empty symbols string for hostname: idle',
       input: [],
       expected: '',
+    },
+    {
+      name: 'Single agent idle (green circle)',
+      input: ['idle'],
+      expected: '○',
+    },
+    {
+      name: 'Two agents idle (two green circles)',
+      input: ['idle', 'idle'],
+      expected: '○○',
     },
     {
       name: 'Single agent working',
@@ -277,15 +300,13 @@ function runSelfTests() {
       expected: '××✓✓',
     },
     {
-      name: 'Mixed states with working and idle',
+      name: 'Mixed states with working, blocked, done, and idle',
       input: ['idle', 'working', 'blocked', 'done'],
       expected: '×✓◐○',
     },
     {
       name: 'More than 10 agents: blocked and done stay in front',
       input: ['idle', 'working', 'done', 'idle', 'blocked', 'done', 'working', 'idle', 'working', 'done', 'idle', 'blocked'],
-      // Sorted: blocked(2), done(3), working(3), idle(4)
-      // Top 10: blocked(2), done(3), working(3), idle(2) -> ××✓✓✓◐◐◐○○
       expected: '××✓✓✓◐◐◐○○',
     },
     {
