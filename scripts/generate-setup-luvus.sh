@@ -9,6 +9,8 @@ SETUP_SCRIPT="$PROJECT_DIR/Resources/scripts/setup-luvus.sh"
 MANIFEST="$PROJECT_DIR/Resources/luvus-plugin/luvus-module.toml"
 PLUGIN="$PROJECT_DIR/Resources/luvus-plugin/index.js"
 RUNNER="$PROJECT_DIR/Resources/luvus-plugin/run.sh"
+PI_MANIFEST="$PROJECT_DIR/Resources/luvus-plugin/pi-manifest.toml"
+PI_EXTENSION="$PROJECT_DIR/Resources/luvus-plugin/pi-extension.ts"
 
 replace_block() {
     local file="$1" start="$2" end="$3" content="$4" tmp
@@ -26,6 +28,30 @@ replace_block() {
     ' "$file" > "$tmp"
     mv "$tmp" "$file"
 }
+
+tmp_pi_manifest=$(mktemp)
+{
+    printf "cat << 'MUH_PI_MANIFEST' > \"\$LUVUS_MANIFESTS_DIR/pi.toml\"\n"
+    cat "$PI_MANIFEST"
+    printf "MUH_PI_MANIFEST\n"
+} > "$tmp_pi_manifest"
+replace_block "$SETUP_SCRIPT" \
+    '# BEGIN GENERATED PI MANIFEST' \
+    '# END GENERATED PI MANIFEST' \
+    "$tmp_pi_manifest"
+rm -f "$tmp_pi_manifest"
+
+tmp_pi_ext=$(mktemp)
+{
+    printf "cat << 'MUH_PI_EXTENSION' > \"\$PI_EXTENSIONS_DIR/luvus-agent-state.ts\"\n"
+    cat "$PI_EXTENSION"
+    printf "MUH_PI_EXTENSION\n"
+} > "$tmp_pi_ext"
+replace_block "$SETUP_SCRIPT" \
+    '# BEGIN GENERATED PI EXTENSION' \
+    '# END GENERATED PI EXTENSION' \
+    "$tmp_pi_ext"
+rm -f "$tmp_pi_ext"
 
 tmp_manifest=$(mktemp)
 {

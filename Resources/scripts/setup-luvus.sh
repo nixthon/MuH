@@ -171,14 +171,15 @@ NODE_VERSION=$("$NODE_BIN" -v 2>&1 || echo "unknown")
 ok "Found Node.js at $NODE_BIN (${NODE_VERSION})"
 
 # ------------------------------------------------------------------------------
-# 3. Configure ~/.config/luvus/config.toml
+# 3. Configure ~/.config/luvus/config.toml & Agent Detection Manifests
 # ------------------------------------------------------------------------------
-info "Configuring Luvus settings..."
+info "Configuring Luvus settings and agent manifests..."
 
 LUVUS_CONFIG_DIR="$HOME/.config/luvus"
 LUVUS_CONFIG_FILE="$LUVUS_CONFIG_DIR/config.toml"
+LUVUS_MANIFESTS_DIR="$HOME/.luvus/manifests"
 
-mkdir -p "$LUVUS_CONFIG_DIR"
+mkdir -p "$LUVUS_CONFIG_DIR" "$LUVUS_MANIFESTS_DIR"
 
 if [ -f "$LUVUS_CONFIG_FILE" ]; then
     ok "Luvus config file exists at $LUVUS_CONFIG_FILE"
@@ -190,6 +191,86 @@ agent_title = false
 files_show_hidden = false
 EOF
     ok "Created default ~/.config/luvus/config.toml"
+fi
+
+# Deploy Pi agent detection manifest
+# BEGIN GENERATED PI MANIFEST
+cat << 'MUH_PI_MANIFEST' > "$LUVUS_MANIFESTS_DIR/pi.toml"
+# MuH Agent Detection Manifest for Pi (pi-coding-agent)
+# Placed in ~/.luvus/manifests/pi.toml so Luvus can accurately identify
+# Pi coding agent instances and monitor their working/blocked/idle states.
+
+agent = "pi"
+
+[identity]
+distinct = [
+  "pi-coding-agent",
+  "@earendil-works/pi-coding-agent",
+  "pi-subagents",
+  "PI_CODING_AGENT",
+  "PI_SESSION_DIR"
+]
+ambiguous = ["pi"]
+
+# ── Working State Rules ───────────────────────────────────────────────────────
+# When Pi is streaming tokens, thinking, running tools, or shows interrupt hints.
+
+[[rule]]
+state = "working"
+priority = 200
+region = "screen"
+any = [
+  "ctrl+c to interrupt",
+  "ctrl-c to interrupt",
+  "ctrl+c to cancel",
+  "ctrl-c to cancel",
+  "esc to cancel",
+  "esc to interrupt",
+  "thinking...",
+  "thinking ("
+]
+
+# Animated spinners during inference / tool execution
+[[rule]]
+state = "working"
+priority = 190
+region = "screen"
+any = [
+  "◐", "◑", "◒", "◓",
+  "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"
+]
+
+# ── Blocked State Rules ───────────────────────────────────────────────────────
+# When Pi requires human confirmation, tool approval, or user question answers.
+
+[[rule]]
+state = "blocked"
+priority = 300
+region = "screen"
+any = [
+  "select an option",
+  "do you want to proceed",
+  "(type to add feedback)",
+  "press enter to continue",
+  "confirm? [y/n]",
+  "allow this command",
+  "approve tool execution"
+]
+MUH_PI_MANIFEST
+# END GENERATED PI MANIFEST
+ok "Installed Pi agent detection manifest to $LUVUS_MANIFESTS_DIR/pi.toml"
+
+# Deploy Pi native extension for Luvus if ~/.pi/agent/extensions exists or pi is installed
+PI_EXTENSIONS_DIR="$HOME/.pi/agent/extensions"
+if [ -d "$HOME/.pi" ] || command -v pi >/dev/null 2>&1; then
+    mkdir -p "$PI_EXTENSIONS_DIR"
+    # BEGIN GENERATED PI EXTENSION
+    cat << 'MUH_PI_EXTENSION' > "$PI_EXTENSIONS_DIR/luvus-agent-state.ts"
+// installed by MuH / Luvus Integration
+// @ts-nocheck
+MUH_PI_EXTENSION
+    # END GENERATED PI EXTENSION
+    ok "Installed Pi native extension to $PI_EXTENSIONS_DIR/luvus-agent-state.ts"
 fi
 
 # ------------------------------------------------------------------------------
@@ -204,7 +285,7 @@ mkdir -p "$MODULE_DIR"
 cat << 'MUH_MODULE_MANIFEST' > "$MODULE_DIR/luvus-module.toml"
 id = "muh.status-title"
 name = "MuH Status Title"
-version = "0.1.0"
+version = "0.1.1"
 min_luvus_version = "0.8.3"
 description = "Sync aggregated agent status indicators to outer terminal window title for MuH"
 platforms = ["linux", "macos", "windows"]
@@ -229,6 +310,14 @@ on = "pane.moved"
 command = ["bash", "run.sh"]
 
 [[events]]
+on = "pane.focused"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "pane.renamed"
+command = ["bash", "run.sh"]
+
+[[events]]
 on = "tab.created"
 command = ["bash", "run.sh"]
 
@@ -237,11 +326,11 @@ on = "tab.closed"
 command = ["bash", "run.sh"]
 
 [[events]]
-on = "tab.focused"
+on = "tab.moved"
 command = ["bash", "run.sh"]
 
 [[events]]
-on = "tab.moved"
+on = "tab.renamed"
 command = ["bash", "run.sh"]
 
 [[events]]
@@ -253,11 +342,15 @@ on = "workspace.closed"
 command = ["bash", "run.sh"]
 
 [[events]]
-on = "workspace.focused"
+on = "workspace.moved"
 command = ["bash", "run.sh"]
 
 [[events]]
-on = "workspace.updated"
+on = "session.created"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "session.updated"
 command = ["bash", "run.sh"]
 
 [[actions]]
@@ -409,6 +502,99 @@ function resolveSocketPath() {
 }
 
 /**
+ * Checks if a command line string represents an interactive Luvus TUI client process.
+ * Strictly excludes SSH clients, remote tunnels, wrappers, shells, editors, daemons,
+ * and one-off subcommands (e.g. `ssh -t host luvus`, `luvus server`, `luvus module ...`).
+ *
+ * @param {string} cmd Full command line string from ps
+ * @param {string} [currentSession] Optional targeted session name (e.g. "default", "docs")
+ * @returns {boolean}
+ */
+function isInteractiveLuvusClient(cmd, currentSession = '') {
+  if (!cmd || typeof cmd !== 'string') return false;
+
+  const trimmed = cmd.trim();
+  if (!trimmed) return false;
+
+  const tokens = trimmed.split(/\s+/);
+  if (tokens.length === 0) return false;
+
+  const binPath = tokens[0];
+  const binName = path.basename(binPath).toLowerCase();
+
+  // 1. Strictly exclude SSH clients, remote wrappers, editors, interpreters, shells
+  const forbiddenBins = new Set([
+    'ssh', 'sshd', 'mosh', 'mosh-client', 'mosh-server', 'scp', 'sftp',
+    'grep', 'egrep', 'rg', 'ag', 'ps', 'top', 'htop', 'btop',
+    'vim', 'nvim', 'vi', 'nano', 'emacs', 'cat', 'less', 'more',
+    'node', 'bash', 'zsh', 'sh', 'fish', 'dash', 'tmux', 'screen'
+  ]);
+  if (forbiddenBins.has(binName)) {
+    return false;
+  }
+
+  // 2. The executable must be "luvus"
+  if (binName !== 'luvus') {
+    return false;
+  }
+
+  // 3. Inspect arguments to filter out non-TUI subcommands
+  const subcommands = tokens.slice(1);
+  const nonTuiSubcommands = new Set([
+    'server', 'module', 'agent', 'pane', 'tab', 'workspace', 'task', 'lease',
+    'files', 'git', 'diff', 'worktree', 'theme', 'bar', 'ui', 'integration',
+    'skill', 'wait', 'search', 'events', 'uhp', 'doctor', 'update', 'ping', 'help'
+  ]);
+
+  let hasSessionFlag = false;
+  let sessionName = '';
+
+  for (let i = 0; i < subcommands.length; i++) {
+    const arg = subcommands[i];
+    if (arg === '--session' || arg === '-s') {
+      hasSessionFlag = true;
+      sessionName = subcommands[i + 1] || '';
+      i++;
+      continue;
+    }
+    if (arg.startsWith('--session=')) {
+      hasSessionFlag = true;
+      sessionName = arg.slice(10);
+      continue;
+    }
+    if (arg.startsWith('-')) {
+      continue;
+    }
+
+    // Positional subcommand argument
+    if (arg === 'attach') {
+      // `luvus attach <pane>` launches fullscreen TUI for a single pane, valid client
+      break;
+    }
+    if (nonTuiSubcommands.has(arg)) {
+      return false;
+    }
+    // Any unrecognized positional argument is assumed not to be an interactive TUI launcher
+    return false;
+  }
+
+  // 4. Session matching
+  const targetSession = currentSession || process.env.LUVUS_SESSION || '';
+  if (targetSession && targetSession !== 'default') {
+    if (hasSessionFlag && sessionName && sessionName !== targetSession) {
+      return false;
+    }
+  } else {
+    // Default session: client should not target a different named session
+    if (hasSessionFlag && sessionName && sessionName !== 'default') {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Finds the controlling PTY device of the outer terminal session.
  * Strictly resolves to the single TTY belonging to this Luvus session to prevent
  * cross-talk across hosts/tabs.
@@ -418,7 +604,7 @@ function findTargetTTY() {
   if (process.env.SSH_TTY && fs.existsSync(process.env.SSH_TTY)) return process.env.SSH_TTY;
   if (process.env.TTY && fs.existsSync(process.env.TTY)) return process.env.TTY;
 
-  // 2. Direct /dev/tty check
+  // 2. Direct /dev/tty check (only if valid character device)
   try {
     const fd = fs.openSync('/dev/tty', 'w');
     fs.closeSync(fd);
@@ -458,12 +644,11 @@ function findTargetTTY() {
       if (parts.length >= 3) {
         const [pid, tty, ...cmdParts] = parts;
         const cmd = cmdParts.join(' ');
-        if (cmd.includes('luvus') && !cmd.includes('server') && !cmd.includes('module') && tty && tty !== '?' && tty !== '??') {
-          if (currentSession && cmd.includes('--session') && !cmd.includes(currentSession)) {
-            continue;
+        if (tty && tty !== '?' && tty !== '??') {
+          if (isInteractiveLuvusClient(cmd, currentSession)) {
+            const ttyPath = tty.startsWith('/dev/') ? tty : `/dev/${tty}`;
+            if (fs.existsSync(ttyPath)) return ttyPath;
           }
-          const ttyPath = tty.startsWith('/dev/') ? tty : `/dev/${tty}`;
-          if (fs.existsSync(ttyPath)) return ttyPath;
         }
       }
     }
@@ -490,10 +675,12 @@ function writeTerminalTitle(title) {
     } catch (_) {}
   }
 
-  // 2. Fallback to process.stdout
+  // 2. Fallback to process.stdout if connected to a TTY
   try {
-    process.stdout.write(osc);
-    return true;
+    if (process.stdout.isTTY) {
+      process.stdout.write(osc);
+      return true;
+    }
   } catch (_) {}
 
   return false;
@@ -668,12 +855,12 @@ async function run() {
 }
 
 /**
- * Self tests to verify sorting and formatting logic.
+ * Self tests to verify sorting, formatting, and client filtering logic.
  */
 function runSelfTests() {
-  console.log('Running Luvus status formatting tests...');
+  console.log('Running Luvus status formatting and client filter tests...');
 
-  const testCases = [
+  const formattingTestCases = [
     {
       name: '0 agents (empty array) emits empty symbols string for hostname: idle',
       input: [],
@@ -717,7 +904,7 @@ function runSelfTests() {
   ];
 
   let passed = 0;
-  for (const tc of testCases) {
+  for (const tc of formattingTestCases) {
     const actual = formatAgentStatusSymbols(tc.input);
     if (actual === tc.expected) {
       console.log(`  ✓ ${tc.name}: "${actual}"`);
@@ -727,8 +914,79 @@ function runSelfTests() {
     }
   }
 
-  console.log(`Test results: ${passed}/${testCases.length} passed.`);
-  if (passed !== testCases.length) {
+  const clientFilterTestCases = [
+    {
+      name: 'SSH command should NEVER be matched as local luvus client',
+      cmd: 'ssh -t dq-wy-inf1 luvus',
+      expected: false,
+    },
+    {
+      name: 'SSH command with path should NEVER be matched',
+      cmd: '/usr/bin/ssh -t dev2 luvus',
+      expected: false,
+    },
+    {
+      name: 'Pure luvus command is interactive TUI client',
+      cmd: 'luvus',
+      expected: true,
+    },
+    {
+      name: 'Luvus with binary path is interactive client',
+      cmd: '/Users/test/.local/bin/luvus',
+      expected: true,
+    },
+    {
+      name: 'Luvus attach is interactive client',
+      cmd: 'luvus attach 4',
+      expected: true,
+    },
+    {
+      name: 'Luvus server is daemon, NOT interactive client',
+      cmd: 'luvus server',
+      expected: false,
+    },
+    {
+      name: 'Luvus module run is one-off CLI, NOT interactive client',
+      cmd: 'luvus module run muh.status-title sync',
+      expected: false,
+    },
+    {
+      name: 'Luvus agent list is CLI command, NOT interactive client',
+      cmd: 'luvus agent list',
+      expected: false,
+    },
+    {
+      name: 'Mosh client is NOT luvus client',
+      cmd: 'mosh-client user@remote',
+      expected: false,
+    },
+    {
+      name: 'Matching specific session',
+      cmd: 'luvus --session docs',
+      session: 'docs',
+      expected: true,
+    },
+    {
+      name: 'Mismatching specific session',
+      cmd: 'luvus --session other',
+      session: 'docs',
+      expected: false,
+    },
+  ];
+
+  for (const tc of clientFilterTestCases) {
+    const actual = isInteractiveLuvusClient(tc.cmd, tc.session || '');
+    if (actual === tc.expected) {
+      console.log(`  ✓ [Filter] ${tc.name}: ${actual}`);
+      passed++;
+    } else {
+      console.error(`  ✗ [Filter] ${tc.name}: expected ${tc.expected}, got ${actual}`);
+    }
+  }
+
+  const total = formattingTestCases.length + clientFilterTestCases.length;
+  console.log(`Test results: ${passed}/${total} passed.`);
+  if (passed !== total) {
     process.exit(1);
   }
 }
@@ -747,6 +1005,7 @@ module.exports = {
   formatAgentStatusSymbols,
   getHostname,
   findTargetTTY,
+  isInteractiveLuvusClient,
   STATUS_CONFIG,
   MAX_INDICATORS,
 };
@@ -766,6 +1025,18 @@ if ! "$LUVUS_BIN" server status >/dev/null 2>&1; then
     "$LUVUS_BIN" server start >/dev/null 2>&1 || true
     sleep 1
 fi
+
+# Reload manifests if server is running
+node -e '
+const net = require("net");
+const c = net.createConnection(process.env.HOME + "/.luvus/luvus.sock");
+c.on("connect", () => {
+  c.write(JSON.stringify({id: "setup-reload", method: "server.reload_agent_manifests", params: {}}) + "\n");
+});
+c.on("data", () => { c.destroy(); process.exit(0); });
+c.on("error", () => process.exit(0));
+setTimeout(() => process.exit(0), 1000);
+' 2>/dev/null || true
 
 module_list_output=$("$LUVUS_BIN" module list 2>&1 || true)
 if echo "$module_list_output" | grep -Fq 'muh.status-title'; then

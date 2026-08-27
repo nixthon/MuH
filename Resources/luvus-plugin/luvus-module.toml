@@ -1,6 +1,6 @@
 id = "muh.status-title"
 name = "MuH Status Title"
-version = "0.1.0"
+version = "0.1.1"
 min_luvus_version = "0.8.3"
 description = "Sync aggregated agent status indicators to outer terminal window title for MuH"
 platforms = ["linux", "macos", "windows"]
@@ -25,6 +25,14 @@ on = "pane.moved"
 command = ["bash", "run.sh"]
 
 [[events]]
+on = "pane.focused"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "pane.renamed"
+command = ["bash", "run.sh"]
+
+[[events]]
 on = "tab.created"
 command = ["bash", "run.sh"]
 
@@ -33,11 +41,11 @@ on = "tab.closed"
 command = ["bash", "run.sh"]
 
 [[events]]
-on = "tab.focused"
+on = "tab.moved"
 command = ["bash", "run.sh"]
 
 [[events]]
-on = "tab.moved"
+on = "tab.renamed"
 command = ["bash", "run.sh"]
 
 [[events]]
@@ -49,11 +57,15 @@ on = "workspace.closed"
 command = ["bash", "run.sh"]
 
 [[events]]
-on = "workspace.focused"
+on = "workspace.moved"
 command = ["bash", "run.sh"]
 
 [[events]]
-on = "workspace.updated"
+on = "session.created"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "session.updated"
 command = ["bash", "run.sh"]
 
 [[actions]]

@@ -1,0 +1,60 @@
+# MuH Agent Detection Manifest for Pi (pi-coding-agent)
+# Placed in ~/.luvus/manifests/pi.toml so Luvus can accurately identify
+# Pi coding agent instances and monitor their working/blocked/idle states.
+
+agent = "pi"
+
+[identity]
+distinct = [
+  "pi-coding-agent",
+  "@earendil-works/pi-coding-agent",
+  "pi-subagents",
+  "PI_CODING_AGENT",
+  "PI_SESSION_DIR"
+]
+ambiguous = ["pi"]
+
+# ── Working State Rules ───────────────────────────────────────────────────────
+# When Pi is streaming tokens, thinking, running tools, or shows interrupt hints.
+
+[[rule]]
+state = "working"
+priority = 200
+region = "screen"
+any = [
+  "ctrl+c to interrupt",
+  "ctrl-c to interrupt",
+  "ctrl+c to cancel",
+  "ctrl-c to cancel",
+  "esc to cancel",
+  "esc to interrupt",
+  "thinking...",
+  "thinking ("
+]
+
+# Animated spinners during inference / tool execution
+[[rule]]
+state = "working"
+priority = 190
+region = "screen"
+any = [
+  "◐", "◑", "◒", "◓",
+  "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"
+]
+
+# ── Blocked State Rules ───────────────────────────────────────────────────────
+# When Pi requires human confirmation, tool approval, or user question answers.
+
+[[rule]]
+state = "blocked"
+priority = 300
+region = "screen"
+any = [
+  "select an option",
+  "do you want to proceed",
+  "(type to add feedback)",
+  "press enter to continue",
+  "confirm? [y/n]",
+  "allow this command",
+  "approve tool execution"
+]
