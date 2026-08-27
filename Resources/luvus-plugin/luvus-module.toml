@@ -1,6 +1,6 @@
 id = "muh.status-title"
 name = "MuH Status Title"
-version = "0.1.1"
+version = "0.1.2"
 min_luvus_version = "0.8.3"
 description = "Sync aggregated agent status indicators to outer terminal window title for MuH"
 platforms = ["linux", "macos", "windows"]
@@ -10,6 +10,10 @@ command = ["bash", "run.sh"]
 
 [[events]]
 on = "pane.agent_status_changed"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "agent.authority_released"
 command = ["bash", "run.sh"]
 
 [[events]]

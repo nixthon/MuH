@@ -4,7 +4,7 @@ This module connects [Luvus](https://github.com/RizRiyz/luvus) sessions with **M
 
 ## Components & Versions
 
-- **Status Title Module**: `v0.1.1` (`luvus-module.toml` & `index.js`)
+- **Status Title Module**: `v0.1.2` (`luvus-module.toml` & `index.js`)
 - **Pi Detection Manifest**: `v1.0.0` (`pi-manifest.toml` -> `~/.luvus/manifests/pi.toml`)
 - **Pi Native Extension**: `v1.3.0` (`pi-extension.ts` -> `~/.pi/agent/extensions/luvus-agent-state.ts`)
 

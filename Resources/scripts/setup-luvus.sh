@@ -561,7 +561,7 @@ mkdir -p "$MODULE_DIR"
 cat << 'MUH_MODULE_MANIFEST' > "$MODULE_DIR/luvus-module.toml"
 id = "muh.status-title"
 name = "MuH Status Title"
-version = "0.1.1"
+version = "0.1.2"
 min_luvus_version = "0.8.3"
 description = "Sync aggregated agent status indicators to outer terminal window title for MuH"
 platforms = ["linux", "macos", "windows"]
@@ -571,6 +571,10 @@ command = ["bash", "run.sh"]
 
 [[events]]
 on = "pane.agent_status_changed"
+command = ["bash", "run.sh"]
+
+[[events]]
+on = "agent.authority_released"
 command = ["bash", "run.sh"]
 
 [[events]]
@@ -701,7 +705,7 @@ const net = require('node:net');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const MODULE_VERSION = '0.1.1';
+const MODULE_VERSION = '0.1.2';
 
 const STATUS_CONFIG = {
   blocked: { weight: 1, symbol: '×' }, // 🔴 阻塞 / 需要人类介入确认
@@ -1325,20 +1329,26 @@ setTimeout(() => process.exit(0), 1000);
 
 module_list_output=$("$LUVUS_BIN" module list 2>&1 || true)
 if echo "$module_list_output" | grep -Fq 'muh.status-title'; then
-    ok "Module muh.status-title is already registered in Luvus."
-    "$LUVUS_BIN" module enable "muh.status-title" >/dev/null 2>&1 || true
-else
-    if ! link_output=$("$LUVUS_BIN" module link "$MODULE_DIR" 2>&1); then
-        # If server was starting up, retry once
-        "$LUVUS_BIN" server start >/dev/null 2>&1 || true
-        sleep 1
-        if ! link_output=$("$LUVUS_BIN" module link "$MODULE_DIR" 2>&1); then
-            err "Failed to register module:"
-            printf '%s\n' "$link_output"
-            exit 1
-        fi
+    info "Refreshing existing muh.status-title module registration..."
+    if ! unlink_output=$("$LUVUS_BIN" module unlink "muh.status-title" 2>&1); then
+        err "Failed to unlink the existing module registration:"
+        printf '%s\n' "$unlink_output"
+        exit 1
     fi
 fi
+
+if ! link_output=$("$LUVUS_BIN" module link "$MODULE_DIR" 2>&1); then
+    # If server was starting up, retry once
+    "$LUVUS_BIN" server start >/dev/null 2>&1 || true
+    sleep 1
+    if ! link_output=$("$LUVUS_BIN" module link "$MODULE_DIR" 2>&1); then
+        err "Failed to register module:"
+        printf '%s\n' "$link_output"
+        exit 1
+    fi
+fi
+
+"$LUVUS_BIN" module enable "muh.status-title" >/dev/null 2>&1 || true
 
 # Verify link
 module_list_output=$("$LUVUS_BIN" module list 2>&1 || true)

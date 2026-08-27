@@ -14,7 +14,7 @@ const net = require('node:net');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const MODULE_VERSION = '0.1.1';
+const MODULE_VERSION = '0.1.2';
 
 const STATUS_CONFIG = {
   blocked: { weight: 1, symbol: '×' }, // 🔴 阻塞 / 需要人类介入确认
