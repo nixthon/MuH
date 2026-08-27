@@ -16,14 +16,14 @@ replace_block() {
     local file="$1" start="$2" end="$3" content="$4" tmp
     tmp=$(mktemp "${file}.XXXXXX")
     awk -v start="$start" -v end="$end" -v content="$content" '
-        $0 == start {
-            print start
+        index($0, start) > 0 {
+            print $0
             while ((getline line < content) > 0) print line
             close(content)
             skip = 1
             next
         }
-        skip && $0 == end { print end; skip = 0; next }
+        skip && index($0, end) > 0 { print $0; skip = 0; next }
         !skip { print }
     ' "$file" > "$tmp"
     mv "$tmp" "$file"
