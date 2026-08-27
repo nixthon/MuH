@@ -197,6 +197,7 @@ fi
 # BEGIN GENERATED PI MANIFEST
 cat << 'MUH_PI_MANIFEST' > "$LUVUS_MANIFESTS_DIR/pi.toml"
 # MuH Agent Detection Manifest for Pi (pi-coding-agent)
+# VERSION: 1.0.0
 # Placed in ~/.luvus/manifests/pi.toml so Luvus can accurately identify
 # Pi coding agent instances and monitor their working/blocked/idle states.
 
@@ -267,6 +268,8 @@ if [ -d "$HOME/.pi" ] || command -v pi >/dev/null 2>&1; then
     # BEGIN GENERATED PI EXTENSION
 cat << 'MUH_PI_EXTENSION' > "$PI_EXTENSIONS_DIR/luvus-agent-state.ts"
 // installed by MuH / Luvus Integration
+// LUVUS_INTEGRATION_ID=pi
+// LUVUS_INTEGRATION_VERSION=1.0.0
 // @ts-nocheck
 
 import net from "node:net";
@@ -275,6 +278,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 
+const EXTENSION_VERSION = "1.0.0";
 const LUVUS_ENV = process.env.LUVUS_ENV;
 const rawSocketPath = process.env.LUVUS_SOCKET_PATH;
 const paneId = process.env.LUVUS_PANE_ID;
@@ -661,6 +665,8 @@ const net = require('node:net');
 const path = require('node:path');
 const fs = require('node:fs');
 
+const MODULE_VERSION = '0.1.1';
+
 const STATUS_CONFIG = {
   blocked: { weight: 1, symbol: '×' }, // 🔴 阻塞 / 需要人类介入确认
   done:    { weight: 2, symbol: '✓' }, // 🟢 任务完成待查看
@@ -1023,6 +1029,12 @@ async function run() {
   const args = process.argv.slice(2);
   const isTest = args.includes('--test');
   const isDryRun = args.includes('--dry-run');
+  const isVersion = args.includes('--version') || args.includes('-v');
+
+  if (isVersion) {
+    console.log(`muh.status-title v${MODULE_VERSION}`);
+    return true;
+  }
 
   if (isTest) {
     runSelfTests();
@@ -1070,9 +1082,9 @@ async function run() {
     const symbols = formatAgentStatusSymbols(statuses);
     const title = symbols ? `${hostname}: ${symbols}` : `${hostname}: idle`;
     const targetTTY = findTargetTTY();
-    console.log(`[Luvus StatusTitle DryRun] Target TTY: ${targetTTY || 'none'}`);
-    console.log(`[Luvus StatusTitle DryRun] Agents: ${statuses.join(', ')}`);
-    console.log(`[Luvus StatusTitle DryRun] Title: "${title}"`);
+    console.log(`[Luvus StatusTitle v${MODULE_VERSION} DryRun] Target TTY: ${targetTTY || 'none'}`);
+    console.log(`[Luvus StatusTitle v${MODULE_VERSION} DryRun] Agents: ${statuses.join(', ')}`);
+    console.log(`[Luvus StatusTitle v${MODULE_VERSION} DryRun] Title: "${title}"`);
     return true;
   }
 
@@ -1238,6 +1250,7 @@ run()
   });
 
 module.exports = {
+  MODULE_VERSION,
   formatAgentStatusSymbols,
   getHostname,
   findTargetTTY,

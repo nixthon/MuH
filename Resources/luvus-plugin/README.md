@@ -2,17 +2,24 @@
 
 This module connects [Luvus](https://github.com/RizRiyz/luvus) sessions with **MuH (Multiplexing Host Manager)**.
 
+## Components & Versions
+
+- **Status Title Module**: `v0.1.1` (`luvus-module.toml` & `index.js`)
+- **Pi Detection Manifest**: `v1.0.0` (`pi-manifest.toml` -> `~/.luvus/manifests/pi.toml`)
+- **Pi Native Extension**: `v1.0.0` (`pi-extension.ts` -> `~/.pi/agent/extensions/luvus-agent-state.ts`)
+
 ## How It Works
 
-1. Listens to `pane.agent_status_changed`, `pane.created`, `pane.closed`, and `workspace.*` events emitted by Luvus.
-2. Queries the live agent list via Unix Socket JSON-RPC (`$LUVUS_SOCKET_PATH`) or CLI fallback (`luvus agent list`).
-3. Aggregates and sorts all living agent vital signs by priority:
-   - 🔴 **`×` (blocked)**: Highest priority (requires human confirmation/attention).
-   - 🟢 **`✓` (done)**: Completed tasks awaiting review.
-   - 🟡 **`◐` (working)**: Active task execution.
-   - 🟢 **`○` (idle)**: Living agent in ready/idle standby state.
-4. Formats the title string:
-   - 1 symbol = 1 living agent (e.g. `dev2: ◐○` for 1 working + 1 idle agent).
-   - When 0 agents are alive, outputs `dev2: idle` with zero symbols.
-   - Writes directly to the host TTY as an OSC 0 terminal title sequence.
-5. MuH's native Ghostty engine intercepts OSC 0, updating the sidebar dashboard and triggering notifications.
+1. **Pi Native Integration (`v1.0.0`)**: Listens to Pi agent lifecycle events (`agent_start`, `herdr:blocked`, `agent_settled`, `session_shutdown`) and reports state via Unix Socket JSON-RPC (`agent.report` / `agent.release`).
+2. **Pi Detection Manifest (`v1.0.0`)**: Declares `[identity]` and state detection rules for Luvus v0.13.1+ process & screen scanners.
+3. **Status Title Module (`v0.1.1`)**:
+   - Listens to Luvus pane and workspace events.
+   - Queries live agents via Unix Socket JSON-RPC (`$LUVUS_SOCKET_PATH`).
+   - Aggregates and sorts all living agent vital signs by priority:
+     - 🔴 **`×` (blocked)**: Priority 1 (human confirmation/attention required).
+     - 🟢 **`✓` (done)**: Priority 2 (completed tasks awaiting review).
+     - 🟡 **`◐` (working)**: Priority 3 (active execution/thinking).
+     - 🟢 **`○` (idle)**: Priority 4 (ready/idle standby agent).
+   - Formats title strictly: 1 symbol = 1 living agent (e.g. `dev2: ◐○`); 0 agents = `dev2: idle`.
+   - Strictly resolves local controlling PTY while filtering out all SSH tunnels to prevent cross-host title pollution.
+   - Writes OSC 0 sequence to outer host PTY, captured by MuH's native Ghostty engine.

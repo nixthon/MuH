@@ -1,4 +1,6 @@
 // installed by MuH / Luvus Integration
+// LUVUS_INTEGRATION_ID=pi
+// LUVUS_INTEGRATION_VERSION=1.0.0
 // @ts-nocheck
 
 import net from "node:net";
@@ -7,6 +9,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 
+const EXTENSION_VERSION = "1.0.0";
 const LUVUS_ENV = process.env.LUVUS_ENV;
 const rawSocketPath = process.env.LUVUS_SOCKET_PATH;
 const paneId = process.env.LUVUS_PANE_ID;

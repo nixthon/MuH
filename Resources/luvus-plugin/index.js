@@ -14,6 +14,8 @@ const net = require('node:net');
 const path = require('node:path');
 const fs = require('node:fs');
 
+const MODULE_VERSION = '0.1.1';
+
 const STATUS_CONFIG = {
   blocked: { weight: 1, symbol: '×' }, // 🔴 阻塞 / 需要人类介入确认
   done:    { weight: 2, symbol: '✓' }, // 🟢 任务完成待查看
@@ -376,6 +378,12 @@ async function run() {
   const args = process.argv.slice(2);
   const isTest = args.includes('--test');
   const isDryRun = args.includes('--dry-run');
+  const isVersion = args.includes('--version') || args.includes('-v');
+
+  if (isVersion) {
+    console.log(`muh.status-title v${MODULE_VERSION}`);
+    return true;
+  }
 
   if (isTest) {
     runSelfTests();
@@ -423,9 +431,9 @@ async function run() {
     const symbols = formatAgentStatusSymbols(statuses);
     const title = symbols ? `${hostname}: ${symbols}` : `${hostname}: idle`;
     const targetTTY = findTargetTTY();
-    console.log(`[Luvus StatusTitle DryRun] Target TTY: ${targetTTY || 'none'}`);
-    console.log(`[Luvus StatusTitle DryRun] Agents: ${statuses.join(', ')}`);
-    console.log(`[Luvus StatusTitle DryRun] Title: "${title}"`);
+    console.log(`[Luvus StatusTitle v${MODULE_VERSION} DryRun] Target TTY: ${targetTTY || 'none'}`);
+    console.log(`[Luvus StatusTitle v${MODULE_VERSION} DryRun] Agents: ${statuses.join(', ')}`);
+    console.log(`[Luvus StatusTitle v${MODULE_VERSION} DryRun] Title: "${title}"`);
     return true;
   }
 
@@ -591,6 +599,7 @@ run()
   });
 
 module.exports = {
+  MODULE_VERSION,
   formatAgentStatusSymbols,
   getHostname,
   findTargetTTY,
