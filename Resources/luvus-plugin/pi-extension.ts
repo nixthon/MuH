@@ -1,6 +1,6 @@
 // installed by MuH / Luvus Integration
 // LUVUS_INTEGRATION_ID=pi
-// LUVUS_INTEGRATION_VERSION=1.1.0
+// LUVUS_INTEGRATION_VERSION=1.2.0
 // @ts-nocheck
 
 import net from "node:net";
@@ -9,16 +9,16 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 
-const EXTENSION_VERSION = "1.1.0";
+const EXTENSION_VERSION = "1.2.0";
 const LUVUS_ENV = process.env.LUVUS_ENV;
 const rawSocketPath = process.env.LUVUS_SOCKET_PATH;
 const paneId = process.env.LUVUS_PANE_ID;
 const luvusBin = process.env.LUVUS_BIN_PATH || "luvus";
 const source = "pi";
 
-// 30 seconds leased TTL; refreshed every 10s via heartbeat so crashed/exited agents auto-expire quickly
-const LEASE_TTL_SECONDS = 30;
-const HEARTBEAT_INTERVAL_MS = 10000;
+// 45 seconds lease TTL, renewed every 15 seconds; auto-expires dead instances reliably
+const LEASE_TTL_SECONDS = 45;
+const HEARTBEAT_INTERVAL_MS = 15000;
 
 function resolveSocketPath(): string | null {
   if (rawSocketPath && fs.existsSync(rawSocketPath)) {
@@ -43,7 +43,7 @@ function enabled(): boolean {
   return (LUVUS_ENV === "1" || !!process.env.LUVUS_PANE_ID) && !!paneId;
 }
 
-function sendSocketRequest(socketPath: string, request: unknown, timeoutMs = 500): Promise<boolean> {
+function sendSocketRequest(socketPath: string, request: unknown, timeoutMs = 600): Promise<boolean> {
   return new Promise((resolve) => {
     let done = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -140,7 +140,7 @@ async function reportState(state: AgentState, message?: string): Promise<void> {
         session: currentSessionId || undefined,
       },
     };
-    const ok = await sendSocketRequest(socketPath, req, 500);
+    const ok = await sendSocketRequest(socketPath, req, 600);
     if (ok) return;
   }
 
@@ -168,7 +168,7 @@ async function releaseState(): Promise<void> {
         source,
       },
     };
-    const ok = await sendSocketRequest(socketPath, req, 500);
+    const ok = await sendSocketRequest(socketPath, req, 600);
     if (ok) return;
   }
 
@@ -177,7 +177,9 @@ async function releaseState(): Promise<void> {
 }
 
 function startHeartbeat(): void {
-  if (heartbeatTimer) return;
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+  }
   heartbeatTimer = setInterval(() => {
     if (!enabled()) return;
     void reportState(currentState, currentMessage);
@@ -194,8 +196,6 @@ export default function (pi: any) {
   let blockedCount = 0;
   let blockedMessage: string | undefined;
   let lastState: AgentState | undefined;
-
-  startHeartbeat();
 
   function evaluateState(): { state: AgentState; message?: string } {
     if (blockedCount > 0) {
@@ -215,6 +215,12 @@ export default function (pi: any) {
     lastState = current.state;
     void reportState(current.state, current.message);
   }
+
+  // 1. Immediately start heartbeat timer
+  startHeartbeat();
+
+  // 2. Immediately publish initial state (critical for startup & /reload)
+  publishState(true);
 
   // Blocked events (confirmations / user choices)
   pi.events?.on?.("herdr:blocked", (data: any) => {
