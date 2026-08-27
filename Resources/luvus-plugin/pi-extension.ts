@@ -1,6 +1,6 @@
 // installed by MuH / Luvus Integration
 // LUVUS_INTEGRATION_ID=pi
-// LUVUS_INTEGRATION_VERSION=1.2.0
+// LUVUS_INTEGRATION_VERSION=1.3.0
 // @ts-nocheck
 
 import net from "node:net";
@@ -9,21 +9,26 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 
-const EXTENSION_VERSION = "1.2.0";
 const LUVUS_ENV = process.env.LUVUS_ENV;
 const rawSocketPath = process.env.LUVUS_SOCKET_PATH;
 const paneId = process.env.LUVUS_PANE_ID;
 const luvusBin = process.env.LUVUS_BIN_PATH || "luvus";
 const source = "pi";
 
-// 45 seconds lease TTL, renewed every 15 seconds; auto-expires dead instances reliably
 const LEASE_TTL_SECONDS = 45;
 const HEARTBEAT_INTERVAL_MS = 15000;
+
+type AgentState = "working" | "blocked" | "idle";
+
+function enabled(): boolean {
+  return LUVUS_ENV === "1" && !!paneId;
+}
 
 function resolveSocketPath(): string | null {
   if (rawSocketPath && fs.existsSync(rawSocketPath)) {
     return rawSocketPath;
   }
+
   const home = os.homedir();
   const candidates = [
     path.join(home, ".luvus", "luvus.sock"),
@@ -31,104 +36,119 @@ function resolveSocketPath(): string | null {
     path.join("/tmp", `luvus-${process.getuid?.() || 1000}`, "luvus.sock"),
     path.join("/tmp", "luvus.sock"),
   ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) {
-      return c;
-    }
-  }
-  return null;
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
 }
 
-function enabled(): boolean {
-  return (LUVUS_ENV === "1" || !!process.env.LUVUS_PANE_ID) && !!paneId;
-}
-
-function sendSocketRequest(socketPath: string, request: unknown, timeoutMs = 600): Promise<boolean> {
+function sendSocketRequest(
+  socketPath: string,
+  request: Record<string, unknown>,
+  timeoutMs: number,
+): Promise<boolean> {
   return new Promise((resolve) => {
-    let done = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    const finish = (ok: boolean) => {
-      if (done) return;
-      done = true;
-      if (timer) clearTimeout(timer);
-      try {
-        socket.destroy();
-      } catch (_) {}
-      resolve(ok);
-    };
+    let settled = false;
+    let buffer = "";
 
     const socket = net.createConnection(socketPath);
-    socket.on("error", () => finish(false));
-    socket.on("connect", () => {
-      socket.write(`${JSON.stringify(request)}\n`);
-    });
-    socket.on("data", () => finish(true));
-    socket.on("end", () => finish(false));
+    const timeout = setTimeout(() => finish(false), timeoutMs);
 
-    timer = setTimeout(() => finish(false), timeoutMs);
-    timer.unref?.();
+    function finish(delivered: boolean): void {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      socket.destroy();
+      resolve(delivered);
+    }
+
+    socket.on("error", () => finish(false));
+    socket.on("connect", () => socket.write(`${JSON.stringify(request)}\n`));
+    socket.on("data", (chunk) => {
+      buffer += chunk.toString();
+      const newline = buffer.indexOf("\n");
+      if (newline < 0) return;
+
+      try {
+        const response = JSON.parse(buffer.slice(0, newline));
+        finish(response?.id === request.id && !response?.error);
+      } catch {
+        finish(false);
+      }
+    });
+    socket.on("end", () => finish(false));
   });
 }
 
-function sendCliReport(status: string, message?: string): void {
+async function sendRequest(request: Record<string, unknown>): Promise<boolean> {
+  const socketPath = resolveSocketPath();
+  if (!socketPath) return false;
+  if (await sendSocketRequest(socketPath, request, 500)) return true;
+  return sendSocketRequest(socketPath, request, 1500);
+}
+
+function sendCliReport(state: AgentState, message?: string): void {
   try {
     const args = [
       "agent", "report", paneId!,
       "--source", source,
-      "--agent", "pi",
-      "--status", status,
-      "--ttl", String(LEASE_TTL_SECONDS)
+      "--kind", "pi",
+      "--status", state,
+      "--ttl", String(LEASE_TTL_SECONDS),
     ];
-    if (message) {
-      args.push("--message", message);
-    }
-    const child = spawn(luvusBin, args, {
-      stdio: "ignore",
-      detached: true,
-    });
+    if (message) args.push("--message", message);
+
+    const child = spawn(luvusBin, args, { stdio: "ignore", detached: true });
     child.unref();
-  } catch (_) {}
+  } catch {}
 }
 
 function sendCliRelease(): void {
   try {
-    const child = spawn(luvusBin, ["agent", "release", paneId!, "--source", source], {
-      stdio: "ignore",
-      detached: true,
-    });
+    const child = spawn(
+      luvusBin,
+      ["agent", "release", paneId!, "--source", source],
+      { stdio: "ignore", detached: true },
+    );
     child.unref();
-  } catch (_) {}
+  } catch {}
 }
 
-type AgentState = "working" | "blocked" | "done" | "idle";
-
-let reportSeq = Date.now();
-let currentSessionId: string | undefined;
-let currentState: AgentState = "idle";
-let currentMessage: string | undefined;
-let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
-
-function updateSessionRef(ctx: any): void {
-  try {
-    const id = ctx?.sessionManager?.getSessionId?.();
-    if (typeof id === "string" && id.length > 0) {
-      currentSessionId = id;
-    }
-  } catch (_) {}
-}
-
-async function reportState(state: AgentState, message?: string): Promise<void> {
+export default function (pi: any) {
   if (!enabled()) return;
 
-  currentState = state;
-  currentMessage = message;
-  reportSeq += 1;
-  const socketPath = resolveSocketPath();
+  // All mutable state is instance-local. Reloaded extension instances must not
+  // share timers or queues with the runtime being shut down.
+  let rootSession = false;
+  let agentActive = false;
+  let blockedCount = 0;
+  let blockedMessage: string | undefined;
+  let currentSessionId: string | undefined;
+  let lastState: AgentState | undefined;
+  let lastMessage: string | undefined;
+  let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+  let requestSequence = Date.now() * 1000;
+  let reportChain: Promise<void> = Promise.resolve();
 
-  if (socketPath) {
-    const req = {
-      id: `pi:report:${reportSeq}`,
+  function nextRequestSequence(): number {
+    requestSequence += 1;
+    return requestSequence;
+  }
+
+  function updateSessionRef(ctx: any): void {
+    try {
+      const id = ctx?.sessionManager?.getSessionId?.();
+      currentSessionId = typeof id === "string" && id.length > 0 ? id : undefined;
+    } catch {
+      currentSessionId = undefined;
+    }
+  }
+
+  async function sendReport(
+    state: AgentState,
+    message: string | undefined,
+    requestId: number,
+  ): Promise<void> {
+    const delivered = await sendRequest({
+      id: `pi:report:${paneId}:${requestId}`,
       method: "agent.report",
       params: {
         pane: paneId,
@@ -136,144 +156,122 @@ async function reportState(state: AgentState, message?: string): Promise<void> {
         agent: "pi",
         status: state,
         ttl_s: LEASE_TTL_SECONDS,
-        message: message || undefined,
-        session: currentSessionId || undefined,
+        message,
+        session: currentSessionId,
       },
-    };
-    const ok = await sendSocketRequest(socketPath, req, 600);
-    if (ok) return;
+    });
+
+    if (!delivered) sendCliReport(state, message);
   }
 
-  // CLI fallback
-  sendCliReport(state, message);
-}
+  function queueReport(state: AgentState, message?: string): Promise<void> {
+    const requestId = nextRequestSequence();
+    reportChain = reportChain
+      .catch(() => {})
+      .then(() => sendReport(state, message, requestId));
+    return reportChain;
+  }
 
-async function releaseState(): Promise<void> {
-  if (!enabled()) return;
+  function desiredState(): { state: AgentState; message?: string } {
+    if (blockedCount > 0) {
+      return { state: "blocked", message: blockedMessage };
+    }
+    return { state: agentActive ? "working" : "idle" };
+  }
 
-  if (heartbeatTimer) {
+  function publishState(force = false): Promise<void> {
+    if (!rootSession) return Promise.resolve();
+
+    const next = desiredState();
+    if (!force && next.state === lastState && next.message === lastMessage) {
+      return Promise.resolve();
+    }
+
+    lastState = next.state;
+    lastMessage = next.message;
+    return queueReport(next.state, next.message);
+  }
+
+  function stopHeartbeat(): void {
+    if (!heartbeatTimer) return;
     clearInterval(heartbeatTimer);
     heartbeatTimer = undefined;
   }
 
-  reportSeq += 1;
-  const socketPath = resolveSocketPath();
+  function startHeartbeat(): void {
+    stopHeartbeat();
+    heartbeatTimer = setInterval(() => {
+      void publishState(true);
+    }, HEARTBEAT_INTERVAL_MS);
+  }
 
-  if (socketPath) {
-    const req = {
-      id: `pi:release:${reportSeq}`,
+  async function releaseState(): Promise<void> {
+    const requestId = `pi:release:${paneId}:${Date.now()}`;
+    const delivered = await sendRequest({
+      id: requestId,
       method: "agent.release",
-      params: {
-        pane: paneId,
-        source,
-      },
-    };
-    const ok = await sendSocketRequest(socketPath, req, 600);
-    if (ok) return;
+      params: { pane: paneId, source },
+    });
+    if (!delivered) sendCliRelease();
   }
 
-  // CLI fallback
-  sendCliRelease();
-}
-
-function startHeartbeat(): void {
-  if (heartbeatTimer) {
-    clearInterval(heartbeatTimer);
-  }
-  heartbeatTimer = setInterval(() => {
-    if (!enabled()) return;
-    void reportState(currentState, currentMessage);
-  }, HEARTBEAT_INTERVAL_MS);
-  heartbeatTimer.unref?.();
-}
-
-export default function (pi: any) {
-  if (!enabled()) {
-    return;
-  }
-
-  let agentActive = false;
-  let blockedCount = 0;
-  let blockedMessage: string | undefined;
-  let lastState: AgentState | undefined;
-
-  function evaluateState(): { state: AgentState; message?: string } {
-    if (blockedCount > 0) {
-      return { state: "blocked", message: blockedMessage };
-    }
-    if (agentActive) {
-      return { state: "working" };
-    }
-    return { state: "idle" };
-  }
-
-  function publishState(force = false) {
-    const current = evaluateState();
-    if (!force && current.state === lastState && current.message === currentMessage) {
-      return;
-    }
-    lastState = current.state;
-    void reportState(current.state, current.message);
-  }
-
-  // 1. Immediately start heartbeat timer
-  startHeartbeat();
-
-  // 2. Immediately publish initial state (critical for startup & /reload)
-  publishState(true);
-
-  // Blocked events (confirmations / user choices)
   pi.events?.on?.("herdr:blocked", (data: any) => {
+    if (!rootSession) return;
+
     if (!data?.active) {
       blockedCount = Math.max(0, blockedCount - 1);
       if (blockedCount === 0) blockedMessage = undefined;
-      publishState();
-      return;
+    } else {
+      blockedCount += 1;
+      blockedMessage = data.label || "Awaiting user confirmation";
     }
-    blockedCount += 1;
-    blockedMessage = data.label || "Awaiting user confirmation";
-    publishState();
+    void publishState();
   });
 
-  // Session lifecycle
-  pi.on("session_start", async (event: any, ctx: any) => {
+  pi.on("session_start", async (_event: any, ctx: any) => {
+    // Headless Pi children inherit the pane environment. Only the interactive
+    // root owns this pane's Luvus authority.
+    if (ctx?.mode !== "tui") return;
+
+    rootSession = true;
     updateSessionRef(ctx);
     agentActive = ctx?.isIdle?.() === false;
-    publishState(true);
+    startHeartbeat();
+    await publishState(true);
   });
 
-  pi.on("session_shutdown", async () => {
-    void releaseState();
-  });
-
-  // Prompt / turn execution lifecycle
-  pi.on("before_agent_start", (_event: any, ctx: any) => {
+  pi.on("before_agent_start", async (_event: any, ctx: any) => {
+    if (!rootSession) return;
     updateSessionRef(ctx);
     agentActive = true;
-    publishState();
+    await publishState();
   });
 
-  pi.on("agent_start", (_event: any, ctx: any) => {
+  pi.on("agent_start", async (_event: any, ctx: any) => {
+    if (!rootSession) return;
     updateSessionRef(ctx);
     agentActive = true;
-    publishState();
+    await publishState();
   });
 
-  pi.on("turn_start", (_event: any, ctx: any) => {
-    updateSessionRef(ctx);
-    agentActive = true;
-    publishState();
-  });
-
-  pi.on("agent_end", (_event: any, ctx: any) => {
+  pi.on("agent_settled", async (_event: any, ctx: any) => {
+    if (!rootSession || ctx?.isIdle?.() !== true) return;
     updateSessionRef(ctx);
     agentActive = false;
-    publishState();
+    await publishState();
   });
 
-  pi.on("agent_settled", (_event: any, ctx: any) => {
-    updateSessionRef(ctx);
-    agentActive = false;
-    publishState();
+  pi.on("session_shutdown", async (event: any) => {
+    if (!rootSession) return;
+
+    rootSession = false;
+    stopHeartbeat();
+    await reportChain.catch(() => {});
+
+    // Reload/session replacement immediately establishes a fresh authority.
+    // Explicit release is only needed when the interactive Pi really exits.
+    if (event?.reason === "quit") {
+      await releaseState();
+    }
   });
 }
