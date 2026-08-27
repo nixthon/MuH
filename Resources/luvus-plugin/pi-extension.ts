@@ -1,6 +1,6 @@
 // installed by MuH / Luvus Integration
 // LUVUS_INTEGRATION_ID=pi
-// LUVUS_INTEGRATION_VERSION=1.3.0
+// LUVUS_INTEGRATION_VERSION=1.3.1
 // @ts-nocheck
 
 import net from "node:net";
@@ -12,7 +12,7 @@ import { spawn } from "node:child_process";
 const LUVUS_ENV = process.env.LUVUS_ENV;
 const rawSocketPath = process.env.LUVUS_SOCKET_PATH;
 const paneId = process.env.LUVUS_PANE_ID;
-const luvusBin = process.env.LUVUS_BIN_PATH || "luvus";
+const rawLuvusBin = process.env.LUVUS_BIN_PATH;
 const source = "pi";
 
 const LEASE_TTL_SECONDS = 45;
@@ -23,6 +23,23 @@ type AgentState = "working" | "blocked" | "idle";
 function enabled(): boolean {
   return LUVUS_ENV === "1" && !!paneId;
 }
+
+function resolveLuvusBin(): string {
+  const configured = rawLuvusBin?.trim();
+  if (!configured) return "luvus";
+
+  // Linux appends this marker to /proc/<pid>/exe after an in-place upgrade.
+  // The replacement executable remains available at the original path.
+  const normalized = configured.replace(/ \(deleted\)$/, "");
+  try {
+    fs.accessSync(normalized, fs.constants.X_OK);
+    return normalized;
+  } catch {
+    return "luvus";
+  }
+}
+
+const luvusBin = resolveLuvusBin();
 
 function resolveSocketPath(): string | null {
   if (rawSocketPath && fs.existsSync(rawSocketPath)) {
@@ -85,31 +102,29 @@ async function sendRequest(request: Record<string, unknown>): Promise<boolean> {
   return sendSocketRequest(socketPath, request, 1500);
 }
 
-function sendCliReport(state: AgentState, message?: string): void {
+function spawnDetached(args: string[]): void {
   try {
-    const args = [
-      "agent", "report", paneId!,
-      "--source", source,
-      "--kind", "pi",
-      "--status", state,
-      "--ttl", String(LEASE_TTL_SECONDS),
-    ];
-    if (message) args.push("--message", message);
-
     const child = spawn(luvusBin, args, { stdio: "ignore", detached: true });
+    // spawn() reports lookup/exec failures asynchronously, outside try/catch.
+    child.once("error", () => {});
     child.unref();
   } catch {}
 }
 
+function sendCliReport(state: AgentState, message?: string): void {
+  const args = [
+    "agent", "report", paneId!,
+    "--source", source,
+    "--kind", "pi",
+    "--status", state,
+    "--ttl", String(LEASE_TTL_SECONDS),
+  ];
+  if (message) args.push("--message", message);
+  spawnDetached(args);
+}
+
 function sendCliRelease(): void {
-  try {
-    const child = spawn(
-      luvusBin,
-      ["agent", "release", paneId!, "--source", source],
-      { stdio: "ignore", detached: true },
-    );
-    child.unref();
-  } catch {}
+  spawnDetached(["agent", "release", paneId!, "--source", source]);
 }
 
 export default function (pi: any) {

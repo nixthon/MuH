@@ -4,15 +4,15 @@ This module connects [Luvus](https://github.com/RizRiyz/luvus) sessions with **M
 
 ## Components & Versions
 
-- **Status Title Module**: `v0.1.2` (`luvus-module.toml` & `index.js`)
+- **Status Title Module**: `v0.1.6` (`luvus-module.toml` & `index.js`)
 - **Pi Detection Manifest**: `v1.0.0` (`pi-manifest.toml` -> `~/.luvus/manifests/pi.toml`)
-- **Pi Native Extension**: `v1.3.0` (`pi-extension.ts` -> `~/.pi/agent/extensions/luvus-agent-state.ts`)
+- **Pi Native Extension**: `v1.3.1` (`pi-extension.ts` -> `~/.pi/agent/extensions/luvus-agent-state.ts`)
 
 ## How It Works
 
-1. **Pi Native Integration (`v1.0.0`)**: Listens to Pi agent lifecycle events (`agent_start`, `herdr:blocked`, `agent_settled`, `session_shutdown`) and reports state via Unix Socket JSON-RPC (`agent.report` / `agent.release`).
+1. **Pi Native Integration (`v1.3.1`)**: Listens to Pi agent lifecycle events (`agent_start`, `herdr:blocked`, `agent_settled`, `session_shutdown`) and reports state via Unix Socket JSON-RPC (`agent.report` / `agent.release`).
 2. **Pi Detection Manifest (`v1.0.0`)**: Declares `[identity]` and state detection rules for Luvus v0.13.1+ process & screen scanners.
-3. **Status Title Module (`v0.1.1`)**:
+3. **Status Title Module (`v0.1.6`)**:
    - Listens to Luvus pane and workspace events.
    - Queries live agents via Unix Socket JSON-RPC (`$LUVUS_SOCKET_PATH`).
    - Aggregates and sorts all living agent vital signs by priority:
@@ -23,3 +23,10 @@ This module connects [Luvus](https://github.com/RizRiyz/luvus) sessions with **M
    - Formats title strictly: 1 symbol = 1 living agent (e.g. `dev2: ◐○`); 0 agents = `dev2: idle`.
    - Strictly resolves local controlling PTY while filtering out all SSH tunnels to prevent cross-host title pollution.
    - Writes OSC 0 sequence to outer host PTY, captured by MuH's native Ghostty engine.
+   - Subscribes to `pane.agent_status_changed` and `agent.authority_reported` so Pi native reports refresh the MuH sidebar.
+
+## Known Limitation: Fresh Client Attach
+
+Luvus `0.13.1` has no module-subscribable `client.attached` event. `[[startup]]` runs when the **server/module** starts, not when a later TUI client attaches over SSH.
+
+On a fresh MuH attach the TUI may set the default OSC 0 title `luvus` first. If no pane/agent event fires yet, MuH keeps showing `luvus` even when agents already exist. The next `agent.authority_reported` or `pane.agent_status_changed` rewrites the title (`hostname: idle` / `hostname: ○…`). Upstream fix: emit `client.attached` after TUI title initialization.

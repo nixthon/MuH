@@ -14,7 +14,7 @@ const net = require('node:net');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const MODULE_VERSION = '0.1.2';
+const MODULE_VERSION = '0.1.6';
 
 const STATUS_CONFIG = {
   blocked: { weight: 1, symbol: '×' }, // 🔴 阻塞 / 需要人类介入确认
@@ -90,6 +90,22 @@ function resolveSocketPath() {
     }
   }
   return null;
+}
+
+/**
+ * Resolves a usable Luvus executable after an in-place Linux upgrade.
+ */
+function resolveLuvusBin(configured = process.env.LUVUS_BIN_PATH) {
+  const candidate = configured?.trim();
+  if (!candidate) return 'luvus';
+
+  const normalized = candidate.replace(/ \(deleted\)$/, '');
+  try {
+    fs.accessSync(normalized, fs.constants.X_OK);
+    return normalized;
+  } catch (_) {
+    return 'luvus';
+  }
 }
 
 /**
@@ -191,18 +207,14 @@ function isInteractiveLuvusClient(cmd, currentSession = '') {
  * cross-talk across hosts/tabs.
  */
 function findTargetTTY() {
-  // 1. Direct environment variable
-  if (process.env.SSH_TTY && fs.existsSync(process.env.SSH_TTY)) return process.env.SSH_TTY;
-  if (process.env.TTY && fs.existsSync(process.env.TTY)) return process.env.TTY;
-
-  // 2. Direct /dev/tty check (only if valid character device)
+  // 1. Direct /dev/tty check (only if this process has a controlling terminal)
   try {
     const fd = fs.openSync('/dev/tty', 'w');
     fs.closeSync(fd);
     return '/dev/tty';
   } catch (_) {}
 
-  // 3. Ancestor process walk to find controlling TTY
+  // 2. Ancestor process walk to find a controlling TTY
   let curPid = process.pid;
   for (let i = 0; i < 6; i++) {
     try {
@@ -225,7 +237,8 @@ function findTargetTTY() {
     }
   }
 
-  // 4. Scan the foreground luvus client process attached to a TTY for this session
+  // 3. Module processes are launched by the background Luvus server. Find the
+  // live interactive client instead of trusting the server's inherited SSH_TTY.
   try {
     const currentSession = process.env.LUVUS_SESSION || '';
     const out = execSync('ps -eo pid=,tty=,args=', { encoding: 'utf8' });
@@ -244,6 +257,11 @@ function findTargetTTY() {
       }
     }
   } catch (_) {}
+
+  // 4. Last-resort environment fallback. A daemonized Luvus server can retain
+  // an SSH_TTY that points to an older connection, so this must remain last.
+  if (process.env.SSH_TTY && fs.existsSync(process.env.SSH_TTY)) return process.env.SSH_TTY;
+  if (process.env.TTY && fs.existsSync(process.env.TTY)) return process.env.TTY;
 
   return null;
 }
@@ -392,7 +410,7 @@ async function run() {
 
   const hostname = getHostname();
   const socketPath = resolveSocketPath();
-  const luvusBin = process.env.LUVUS_BIN_PATH || 'luvus';
+  const luvusBin = resolveLuvusBin();
 
   if (isDryRun) {
     let agents = [];
@@ -581,7 +599,30 @@ function runSelfTests() {
     }
   }
 
-  const total = formattingTestCases.length + clientFilterTestCases.length;
+  const binaryTestCases = [
+    {
+      name: 'Linux deleted marker resolves to replacement executable',
+      input: `${process.execPath} (deleted)`,
+      expected: process.execPath,
+    },
+    {
+      name: 'Missing configured executable falls back to PATH lookup',
+      input: path.join(os.tmpdir(), 'muh-luvus-definitely-missing'),
+      expected: 'luvus',
+    },
+  ];
+
+  for (const tc of binaryTestCases) {
+    const actual = resolveLuvusBin(tc.input);
+    if (actual === tc.expected) {
+      console.log(`  ✓ [Binary] ${tc.name}: "${actual}"`);
+      passed++;
+    } else {
+      console.error(`  ✗ [Binary] ${tc.name}: expected "${tc.expected}", got "${actual}"`);
+    }
+  }
+
+  const total = formattingTestCases.length + clientFilterTestCases.length + binaryTestCases.length;
   console.log(`Test results: ${passed}/${total} passed.`);
   if (passed !== total) {
     process.exit(1);
@@ -602,6 +643,7 @@ module.exports = {
   MODULE_VERSION,
   formatAgentStatusSymbols,
   getHostname,
+  resolveLuvusBin,
   findTargetTTY,
   isInteractiveLuvusClient,
   STATUS_CONFIG,

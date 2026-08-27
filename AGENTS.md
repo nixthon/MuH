@@ -210,6 +210,7 @@ MuH/
 4. **PTY 状态通道规范**：
    - Agent 状态通过标准终端 OSC 0 标题传递（例如 `[×]`, `[✓]`, `[◐]` 等 Herdr 状态前缀）。
    - `HostTitleStore` 负责去重与抑制会话初始冗余提示，`NotificationManager` 负责在状态演变（阻塞 / 全部完成）时调度系统横幅与音效。
+   - Luvus `0.13.1` 没有模块可订阅的 `client.attached` 事件。刚 attach 时 TUI 可能先把标题设为默认 `luvus`；MuH 侧边栏会暂时显示 `luvus`，直到下一次 `agent.authority_reported` / `pane.agent_status_changed` 把标题改回 `hostname: idle` 或状态符号。
 
 5. **设计规范 (Design Tokens)**：
    - UI 样式严格遵循 `DT` (`DesignTokens.swift`) 中的间距、圆角与字体规范。
