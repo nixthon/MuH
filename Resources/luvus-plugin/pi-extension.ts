@@ -1,6 +1,6 @@
 // installed by MuH / Luvus Integration
 // LUVUS_INTEGRATION_ID=pi
-// LUVUS_INTEGRATION_VERSION=1.0.0
+// LUVUS_INTEGRATION_VERSION=1.1.0
 // @ts-nocheck
 
 import net from "node:net";
@@ -9,12 +9,16 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 
-const EXTENSION_VERSION = "1.0.0";
+const EXTENSION_VERSION = "1.1.0";
 const LUVUS_ENV = process.env.LUVUS_ENV;
 const rawSocketPath = process.env.LUVUS_SOCKET_PATH;
 const paneId = process.env.LUVUS_PANE_ID;
 const luvusBin = process.env.LUVUS_BIN_PATH || "luvus";
 const source = "pi";
+
+// 30 seconds leased TTL; refreshed every 10s via heartbeat so crashed/exited agents auto-expire quickly
+const LEASE_TTL_SECONDS = 30;
+const HEARTBEAT_INTERVAL_MS = 10000;
 
 function resolveSocketPath(): string | null {
   if (rawSocketPath && fs.existsSync(rawSocketPath)) {
@@ -69,7 +73,13 @@ function sendSocketRequest(socketPath: string, request: unknown, timeoutMs = 500
 
 function sendCliReport(status: string, message?: string): void {
   try {
-    const args = ["agent", "report", paneId!, "--source", source, "--agent", "pi", "--status", status];
+    const args = [
+      "agent", "report", paneId!,
+      "--source", source,
+      "--agent", "pi",
+      "--status", status,
+      "--ttl", String(LEASE_TTL_SECONDS)
+    ];
     if (message) {
       args.push("--message", message);
     }
@@ -95,6 +105,9 @@ type AgentState = "working" | "blocked" | "done" | "idle";
 
 let reportSeq = Date.now();
 let currentSessionId: string | undefined;
+let currentState: AgentState = "idle";
+let currentMessage: string | undefined;
+let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 
 function updateSessionRef(ctx: any): void {
   try {
@@ -108,6 +121,8 @@ function updateSessionRef(ctx: any): void {
 async function reportState(state: AgentState, message?: string): Promise<void> {
   if (!enabled()) return;
 
+  currentState = state;
+  currentMessage = message;
   reportSeq += 1;
   const socketPath = resolveSocketPath();
 
@@ -120,6 +135,7 @@ async function reportState(state: AgentState, message?: string): Promise<void> {
         source,
         agent: "pi",
         status: state,
+        ttl_s: LEASE_TTL_SECONDS,
         message: message || undefined,
         session: currentSessionId || undefined,
       },
@@ -134,6 +150,11 @@ async function reportState(state: AgentState, message?: string): Promise<void> {
 
 async function releaseState(): Promise<void> {
   if (!enabled()) return;
+
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = undefined;
+  }
 
   reportSeq += 1;
   const socketPath = resolveSocketPath();
@@ -155,6 +176,15 @@ async function releaseState(): Promise<void> {
   sendCliRelease();
 }
 
+function startHeartbeat(): void {
+  if (heartbeatTimer) return;
+  heartbeatTimer = setInterval(() => {
+    if (!enabled()) return;
+    void reportState(currentState, currentMessage);
+  }, HEARTBEAT_INTERVAL_MS);
+  heartbeatTimer.unref?.();
+}
+
 export default function (pi: any) {
   if (!enabled()) {
     return;
@@ -164,6 +194,8 @@ export default function (pi: any) {
   let blockedCount = 0;
   let blockedMessage: string | undefined;
   let lastState: AgentState | undefined;
+
+  startHeartbeat();
 
   function evaluateState(): { state: AgentState; message?: string } {
     if (blockedCount > 0) {
@@ -177,7 +209,7 @@ export default function (pi: any) {
 
   function publishState(force = false) {
     const current = evaluateState();
-    if (!force && current.state === lastState) {
+    if (!force && current.state === lastState && current.message === currentMessage) {
       return;
     }
     lastState = current.state;
