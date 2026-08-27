@@ -1,13 +1,13 @@
 // installed by MuH / Luvus Integration
 // LUVUS_INTEGRATION_ID=pi
-// LUVUS_INTEGRATION_VERSION=1.3.1
+// LUVUS_INTEGRATION_VERSION=1.3.2
 // @ts-nocheck
 
 import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 const LUVUS_ENV = process.env.LUVUS_ENV;
 const rawSocketPath = process.env.LUVUS_SOCKET_PATH;
@@ -123,8 +123,22 @@ function sendCliReport(state: AgentState, message?: string): void {
   spawnDetached(args);
 }
 
-function sendCliRelease(): void {
-  spawnDetached(["agent", "release", paneId!, "--source", source]);
+function shouldKeepAuthority(reason?: string): boolean {
+  // Session replacement immediately starts a new TUI instance that re-reports.
+  // Any other reason (quit, signals, missing reason) means this Pi is gone.
+  return reason === "reload" || reason === "new" || reason === "resume" || reason === "fork";
+}
+
+function sendCliRelease(): boolean {
+  try {
+    const res = spawnSync(luvusBin, ["agent", "release", paneId!, "--source", source], {
+      stdio: "ignore",
+      timeout: 2000,
+    });
+    return res.status === 0;
+  } catch {
+    return false;
+  }
 }
 
 export default function (pi: any) {
@@ -162,18 +176,21 @@ export default function (pi: any) {
     message: string | undefined,
     requestId: number,
   ): Promise<void> {
+    const params: Record<string, unknown> = {
+      pane: paneId,
+      source,
+      agent: "pi",
+      status: state,
+      ttl_s: LEASE_TTL_SECONDS,
+    };
+    if (message) params.message = message;
+    // Luvus 0.13.1 rejects unknown parameter `session`; the field is `session_id`.
+    if (currentSessionId) params.session_id = currentSessionId;
+
     const delivered = await sendRequest({
       id: `pi:report:${paneId}:${requestId}`,
       method: "agent.report",
-      params: {
-        pane: paneId,
-        source,
-        agent: "pi",
-        status: state,
-        ttl_s: LEASE_TTL_SECONDS,
-        message,
-        session: currentSessionId,
-      },
+      params,
     });
 
     if (!delivered) sendCliReport(state, message);
@@ -227,6 +244,7 @@ export default function (pi: any) {
       method: "agent.release",
       params: { pane: paneId, source },
     });
+    // Shutdown races process.exit(); a detached CLI child would be killed.
     if (!delivered) sendCliRelease();
   }
 
@@ -277,15 +295,15 @@ export default function (pi: any) {
   });
 
   pi.on("session_shutdown", async (event: any) => {
-    if (!rootSession) return;
-
+    const wasRoot = rootSession;
     rootSession = false;
     stopHeartbeat();
     await reportChain.catch(() => {});
+    if (!wasRoot) return;
 
     // Reload/session replacement immediately establishes a fresh authority.
-    // Explicit release is only needed when the interactive Pi really exits.
-    if (event?.reason === "quit") {
+    // Ctrl+C / Ctrl+D / SIGTERM / /quit all tear the interactive Pi down.
+    if (!shouldKeepAuthority(event?.reason)) {
       await releaseState();
     }
   });

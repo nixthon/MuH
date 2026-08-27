@@ -1,6 +1,6 @@
 id = "muh.status-title"
 name = "MuH Status Title"
-version = "0.1.6"
+version = "0.1.7"
 min_luvus_version = "0.8.3"
 description = "Sync aggregated agent status indicators to outer terminal window title for MuH"
 platforms = ["linux", "macos", "windows"]

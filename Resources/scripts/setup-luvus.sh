@@ -269,14 +269,14 @@ if [ -d "$HOME/.pi" ] || command -v pi >/dev/null 2>&1; then
 cat << 'MUH_PI_EXTENSION' > "$PI_EXTENSIONS_DIR/luvus-agent-state.ts"
 // installed by MuH / Luvus Integration
 // LUVUS_INTEGRATION_ID=pi
-// LUVUS_INTEGRATION_VERSION=1.3.1
+// LUVUS_INTEGRATION_VERSION=1.3.2
 // @ts-nocheck
 
 import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 const LUVUS_ENV = process.env.LUVUS_ENV;
 const rawSocketPath = process.env.LUVUS_SOCKET_PATH;
@@ -392,8 +392,22 @@ function sendCliReport(state: AgentState, message?: string): void {
   spawnDetached(args);
 }
 
-function sendCliRelease(): void {
-  spawnDetached(["agent", "release", paneId!, "--source", source]);
+function shouldKeepAuthority(reason?: string): boolean {
+  // Session replacement immediately starts a new TUI instance that re-reports.
+  // Any other reason (quit, signals, missing reason) means this Pi is gone.
+  return reason === "reload" || reason === "new" || reason === "resume" || reason === "fork";
+}
+
+function sendCliRelease(): boolean {
+  try {
+    const res = spawnSync(luvusBin, ["agent", "release", paneId!, "--source", source], {
+      stdio: "ignore",
+      timeout: 2000,
+    });
+    return res.status === 0;
+  } catch {
+    return false;
+  }
 }
 
 export default function (pi: any) {
@@ -431,18 +445,21 @@ export default function (pi: any) {
     message: string | undefined,
     requestId: number,
   ): Promise<void> {
+    const params: Record<string, unknown> = {
+      pane: paneId,
+      source,
+      agent: "pi",
+      status: state,
+      ttl_s: LEASE_TTL_SECONDS,
+    };
+    if (message) params.message = message;
+    // Luvus 0.13.1 rejects unknown parameter `session`; the field is `session_id`.
+    if (currentSessionId) params.session_id = currentSessionId;
+
     const delivered = await sendRequest({
       id: `pi:report:${paneId}:${requestId}`,
       method: "agent.report",
-      params: {
-        pane: paneId,
-        source,
-        agent: "pi",
-        status: state,
-        ttl_s: LEASE_TTL_SECONDS,
-        message,
-        session: currentSessionId,
-      },
+      params,
     });
 
     if (!delivered) sendCliReport(state, message);
@@ -496,6 +513,7 @@ export default function (pi: any) {
       method: "agent.release",
       params: { pane: paneId, source },
     });
+    // Shutdown races process.exit(); a detached CLI child would be killed.
     if (!delivered) sendCliRelease();
   }
 
@@ -546,15 +564,15 @@ export default function (pi: any) {
   });
 
   pi.on("session_shutdown", async (event: any) => {
-    if (!rootSession) return;
-
+    const wasRoot = rootSession;
     rootSession = false;
     stopHeartbeat();
     await reportChain.catch(() => {});
+    if (!wasRoot) return;
 
     // Reload/session replacement immediately establishes a fresh authority.
-    // Explicit release is only needed when the interactive Pi really exits.
-    if (event?.reason === "quit") {
+    // Ctrl+C / Ctrl+D / SIGTERM / /quit all tear the interactive Pi down.
+    if (!shouldKeepAuthority(event?.reason)) {
       await releaseState();
     }
   });
@@ -576,7 +594,7 @@ mkdir -p "$MODULE_DIR"
 cat << 'MUH_MODULE_MANIFEST' > "$MODULE_DIR/luvus-module.toml"
 id = "muh.status-title"
 name = "MuH Status Title"
-version = "0.1.6"
+version = "0.1.7"
 min_luvus_version = "0.8.3"
 description = "Sync aggregated agent status indicators to outer terminal window title for MuH"
 platforms = ["linux", "macos", "windows"]
@@ -724,7 +742,7 @@ const net = require('node:net');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const MODULE_VERSION = '0.1.6';
+const MODULE_VERSION = '0.1.7';
 
 const STATUS_CONFIG = {
   blocked: { weight: 1, symbol: '×' }, // 🔴 阻塞 / 需要人类介入确认
@@ -751,6 +769,27 @@ const MAX_INDICATORS = 10;
  * @param {string[]} statuses Array of agent status strings (e.g. ['blocked', 'working', 'done', 'idle'])
  * @returns {string} Combined symbols string (e.g. "×✓◐○")
  */
+function releasedPaneFromEnv(eventName = process.env.LUVUS_MODULE_EVENT, eventJson = process.env.LUVUS_MODULE_EVENT_JSON) {
+  if (eventName !== 'agent.authority_released') return null;
+  try {
+    const data = JSON.parse(eventJson || '{}');
+    const pane = data?.pane ?? data?.data?.pane;
+    if (pane == null) return null;
+    const id = String(pane).trim();
+    return id.length > 0 ? id : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function livingAgentStatuses(agents, excludePane) {
+  const list = Array.isArray(agents) ? agents : [];
+  const skip = excludePane == null ? null : String(excludePane);
+  return list
+    .filter((agent) => skip == null || String(agent?.pane ?? '') !== skip)
+    .map((agent) => agent.status || agent.agent_status || 'unknown');
+}
+
 function formatAgentStatusSymbols(statuses) {
   if (!statuses || statuses.length === 0) {
     return '';
@@ -1009,7 +1048,7 @@ function writeTerminalTitle(title) {
  * Fetches agent list and updates terminal title via direct Unix Socket JSON-RPC.
  * Returns true on success, false on failure (which triggers CLI fallback).
  */
-function syncViaSocket(socketPath, hostname) {
+function syncViaSocket(socketPath, hostname, excludePane) {
   return new Promise((resolve) => {
     let settled = false;
     let buffer = '';
@@ -1059,7 +1098,7 @@ function syncViaSocket(socketPath, hostname) {
               ? resp.result.agents
               : (Array.isArray(resp.agents) ? resp.agents : []);
 
-            const statuses = agents.map(a => a.status || a.agent_status || 'unknown');
+            const statuses = livingAgentStatuses(agents, excludePane);
             const symbols = formatAgentStatusSymbols(statuses);
             const title = symbols ? `${hostname}: ${symbols}` : `${hostname}: idle`;
 
@@ -1121,6 +1160,7 @@ async function run() {
   const hostname = getHostname();
   const socketPath = resolveSocketPath();
   const luvusBin = resolveLuvusBin();
+  const excludePane = releasedPaneFromEnv();
 
   if (isDryRun) {
     let agents = [];
@@ -1155,7 +1195,7 @@ async function run() {
     if (agents.length === 0) {
       agents = fetchAgentListCLI(luvusBin);
     }
-    const statuses = agents.map(a => a.status || a.agent_status || 'unknown');
+    const statuses = livingAgentStatuses(agents, excludePane);
     const symbols = formatAgentStatusSymbols(statuses);
     const title = symbols ? `${hostname}: ${symbols}` : `${hostname}: idle`;
     const targetTTY = findTargetTTY();
@@ -1167,13 +1207,13 @@ async function run() {
 
   // 1. Primary path: Native Unix Socket JSON-RPC
   if (socketPath) {
-    const ok = await syncViaSocket(socketPath, hostname);
+    const ok = await syncViaSocket(socketPath, hostname, excludePane);
     if (ok) return true;
   }
 
   // 2. Fallback path: CLI subprocess
   const agents = fetchAgentListCLI(luvusBin);
-  const statuses = agents.map(a => a.status || a.agent_status || 'unknown');
+  const statuses = livingAgentStatuses(agents, excludePane);
   const symbols = formatAgentStatusSymbols(statuses);
   const title = symbols ? `${hostname}: ${symbols}` : `${hostname}: idle`;
   return writeTerminalTitle(title);
@@ -1236,6 +1276,57 @@ function runSelfTests() {
       passed++;
     } else {
       console.error(`  ✗ ${tc.name}: expected "${tc.expected}", got "${actual}"`);
+    }
+  }
+
+  const releaseTestCases = [
+    {
+      name: 'authority_released event extracts pane id',
+      event: 'agent.authority_released',
+      json: '{"pane":"1","source":"pi","reason":"released"}',
+      expectedPane: '1',
+    },
+    {
+      name: 'non-release events do not exclude a pane',
+      event: 'pane.agent_status_changed',
+      json: '{"pane":"1","status":"idle"}',
+      expectedPane: null,
+    },
+    {
+      name: 'released pane is dropped so a ghost idle agent does not keep the green circle',
+      agents: [{ pane: '1', status: 'idle' }, { pane: '2', status: 'working' }],
+      exclude: '1',
+      expected: ['working'],
+    },
+    {
+      name: 'empty agent list after excluding the last pane formats as hostname: idle',
+      agents: [{ pane: '1', status: 'idle' }],
+      exclude: '1',
+      expected: [],
+      expectedSymbols: '',
+    },
+  ];
+
+  for (const tc of releaseTestCases) {
+    if (tc.event) {
+      const actual = releasedPaneFromEnv(tc.event, tc.json);
+      if (actual === tc.expectedPane) {
+        console.log(`  ✓ [Release] ${tc.name}: ${actual}`);
+        passed++;
+      } else {
+        console.error(`  ✗ [Release] ${tc.name}: expected ${tc.expectedPane}, got ${actual}`);
+      }
+      continue;
+    }
+    const actual = livingAgentStatuses(tc.agents, tc.exclude);
+    const symbols = formatAgentStatusSymbols(actual);
+    const okStatuses = JSON.stringify(actual) === JSON.stringify(tc.expected);
+    const okSymbols = tc.expectedSymbols == null || symbols === tc.expectedSymbols;
+    if (okStatuses && okSymbols) {
+      console.log(`  ✓ [Release] ${tc.name}: ${JSON.stringify(actual)}`);
+      passed++;
+    } else {
+      console.error(`  ✗ [Release] ${tc.name}: expected ${JSON.stringify(tc.expected)}, got ${JSON.stringify(actual)}`);
     }
   }
 
@@ -1332,7 +1423,7 @@ function runSelfTests() {
     }
   }
 
-  const total = formattingTestCases.length + clientFilterTestCases.length + binaryTestCases.length;
+  const total = formattingTestCases.length + releaseTestCases.length + clientFilterTestCases.length + binaryTestCases.length;
   console.log(`Test results: ${passed}/${total} passed.`);
   if (passed !== total) {
     process.exit(1);
@@ -1352,6 +1443,8 @@ run()
 module.exports = {
   MODULE_VERSION,
   formatAgentStatusSymbols,
+  livingAgentStatuses,
+  releasedPaneFromEnv,
   getHostname,
   resolveLuvusBin,
   findTargetTTY,
