@@ -2483,6 +2483,23 @@
         }
       }
     },
+    "settings.notification.sendTestNotification": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send Test Notification"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送测试通知"
+          }
+        }
+      }
+    },
     "notification.blocked.title %@": {
       "extractionState": "manual",
       "localizations": {

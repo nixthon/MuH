@@ -182,6 +182,31 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    func sendTestNotification() {
+        requestAuthorization()
+        let content = UNMutableNotificationContent()
+        content.title = "MuH"
+        content.body = "Notification icon test"
+        content.categoryIdentifier = "AGENT_DONE"
+
+        if enableSound {
+            playSound()
+        }
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "muh.test.\(Date().timeIntervalSince1970)",
+            content: content,
+            trigger: trigger
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                NSLog("[MuH] Failed to deliver test notification: %@", error.localizedDescription)
+            }
+        }
+    }
+
     // MARK: - UNUserNotificationCenterDelegate
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,

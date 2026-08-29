@@ -61,6 +61,17 @@ struct NotificationSectionView: View {
                         isOn: $manager.notifyOnCompleted
                     )
                     .padding(.leading, DT.Space.md)
+
+                    Button {
+                        manager.sendTestNotification()
+                    } label: {
+                        HStack(spacing: DT.Space.xs) {
+                            Image(systemName: "bell.badge")
+                            Text(String(localized: L10n.Settings.Notification.sendTestNotification.withLocale(locale)))
+                        }
+                    }
+                    .padding(.leading, DT.Space.md)
+                    .padding(.top, DT.Space.xs)
                 }
             }
 

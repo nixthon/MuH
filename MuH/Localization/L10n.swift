@@ -92,6 +92,7 @@ enum L10n {
             static let enableSound            = LocalizedStringResource("settings.notification.enableSound")
             static let soundName              = LocalizedStringResource("settings.notification.soundName")
             static let playTestSound          = LocalizedStringResource("settings.notification.playTestSound")
+            static let sendTestNotification   = LocalizedStringResource("settings.notification.sendTestNotification")
 
             static let remoteSetupTitle       = LocalizedStringResource("settings.notification.remoteSetupTitle")
             static let remoteSetupDesc        = LocalizedStringResource("settings.notification.remoteSetupDesc")
