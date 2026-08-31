@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var isFullScreen = false
     @State private var sidebarCollapsed = false
     @State private var windowLifecycle = WindowLifecycleObserver()
+    @State private var notificationNavigation = NotificationManager.shared.navigation
     @State private var sidebarWidth: CGFloat = {
         let saved = UserDefaults.standard.double(forKey: "muh.sidebar.width")
         return (saved >= 150 && saved <= 360) ? CGFloat(saved) : DT.Layout.sidebarWidth
@@ -101,8 +102,12 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .muhSelectHostById)) { note in
             if let hostId = note.userInfo?["hostId"] as? UUID {
-                store.select(id: hostId)
+                selectHostFromNotification(hostId)
             }
+        }
+        .onChange(of: notificationNavigation.pendingHostId, initial: true) { _, hostId in
+            guard let hostId else { return }
+            selectHostFromNotification(hostId)
         }
         .onReceive(NotificationCenter.default.publisher(for: .muhOpenSettings)) { _ in
             showSettings.toggle()
@@ -121,6 +126,12 @@ struct ContentView: View {
         } onExit: {
             isFullScreen = false
         }
+    }
+
+    private func selectHostFromNotification(_ hostId: UUID) {
+        store.select(id: hostId)
+        showSettings = false
+        notificationNavigation.consumeHostSelection(hostId)
     }
 }
 

@@ -107,4 +107,19 @@ final class NotificationStatusTests: XCTestCase {
         XCTAssertTrue(store.shouldSuppressInitialStatus(hostId: hostId, title: "dev: ×"))
         XCTAssertFalse(store.shouldSuppressInitialStatus(hostId: hostId, title: "dev: ×"))
     }
+
+    func testPendingNotificationHostSurvivesUntilConsumed() {
+        let navigation = NotificationNavigationState()
+        let firstHostId = UUID()
+        let secondHostId = UUID()
+
+        navigation.requestHostSelection(firstHostId)
+        XCTAssertEqual(navigation.pendingHostId, firstHostId)
+
+        navigation.consumeHostSelection(secondHostId)
+        XCTAssertEqual(navigation.pendingHostId, firstHostId)
+
+        navigation.consumeHostSelection(firstHostId)
+        XCTAssertNil(navigation.pendingHostId)
+    }
 }

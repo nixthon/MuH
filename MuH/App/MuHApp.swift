@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UserNotifications
 
 @main
 struct MuHApp: App {
@@ -129,8 +130,15 @@ struct MuHApp: App {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        installNotificationDelegate()
+        NotificationManager.shared.registerCategories()
+        NotificationManager.shared.clearLegacyDeliveredNotificationsIfNeeded()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installNotificationDelegate()
         NSApp.servicesMenu = nil
         guard let mainMenu = NSApp.mainMenu else { return }
         let topLevelMenusToRemove: Set<String> = [
@@ -143,6 +151,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             appMenu.items.removeAll { serviceTitles.contains($0.title) || $0.submenu == NSApp.servicesMenu }
         }
     }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        NotificationManager.shared.consumeActivationFallback()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        NotificationManager.shared.consumeClickFallback()
+        if !flag {
+            NSApp.windows.first?.makeKeyAndOrderFront(nil)
+        }
+        return true
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        NotificationManager.shared.handleWillPresent(
+            notification,
+            withCompletionHandler: completionHandler
+        )
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        NotificationManager.shared.handleResponse(
+            response,
+            withCompletionHandler: completionHandler
+        )
+    }
+
+    private func installNotificationDelegate() {
+        UNUserNotificationCenter.current().delegate = self
+    }
+
 }
 
 struct GhosttyMissingView: View {

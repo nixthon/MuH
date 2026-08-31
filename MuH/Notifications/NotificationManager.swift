@@ -35,6 +35,20 @@ enum AgentNotificationKind: Equatable {
     case completed
 }
 
+@Observable
+final class NotificationNavigationState {
+    private(set) var pendingHostId: UUID?
+
+    func requestHostSelection(_ hostId: UUID) {
+        pendingHostId = hostId
+    }
+
+    func consumeHostSelection(_ hostId: UUID) {
+        guard pendingHostId == hostId else { return }
+        pendingHostId = nil
+    }
+}
+
 func notificationKind(
     oldTitle: String?,
     newTitle: String,
@@ -58,8 +72,14 @@ func notificationKind(
 }
 
 @Observable
-final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
+final class NotificationManager: NSObject {
     static let shared = NotificationManager()
+    let navigation = NotificationNavigationState()
+    private let legacyNotificationCleanupKey = "muh.notifications.clearedLegacyNavigation.v1"
+    private let clickFallbackTTL: TimeInterval = 45
+    private var lastDeliveredHostId: UUID?
+    private var lastDeliveredAt: Date?
+    private var deliveredWhileInactive = false
 
     // MARK: - Available System Sounds
     static let systemSounds: [String] = [
@@ -109,7 +129,22 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         self.soundName = defaults.string(forKey: "muh.notifications.soundName") ?? "Glass"
 
         super.init()
-        UNUserNotificationCenter.current().delegate = self
+    }
+
+    func registerCategories(on center: UNUserNotificationCenter = .current()) {
+        let categories = ["AGENT_BLOCKED", "AGENT_DONE"].map {
+            UNNotificationCategory(identifier: $0, actions: [], intentIdentifiers: [])
+        }
+        center.setNotificationCategories(Set(categories))
+    }
+
+    func clearLegacyDeliveredNotificationsIfNeeded(
+        on center: UNUserNotificationCenter = .current()
+    ) {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: legacyNotificationCleanupKey) else { return }
+        center.removeAllDeliveredNotifications()
+        defaults.set(true, forKey: legacyNotificationCleanupKey)
     }
 
     func requestAuthorization() {
@@ -163,6 +198,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.body = body
         content.categoryIdentifier = category
         content.userInfo = ["hostId": host.id.uuidString]
+        content.threadIdentifier = "muh.host.\(host.id.uuidString)"
 
         if enableSound {
             playSound()
@@ -178,6 +214,8 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
                 NSLog("[MuH] Failed to deliver notification: %@", error.localizedDescription)
+            } else {
+                self.rememberDeliveredHost(host.id)
             }
         }
     }
@@ -207,32 +245,83 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    // MARK: - UNUserNotificationCenterDelegate
-    func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification,
+    // MARK: - Delegate Forwarding
+    func handleWillPresent(
+        _ notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .list])
     }
 
-    func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse,
+    func handleResponse(
+        _ response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        defer { completionHandler() }
         let userInfo = response.notification.request.content.userInfo
         guard let hostIdString = userInfo["hostId"] as? String,
-              let hostId = UUID(uuidString: hostIdString) else { return }
+              let hostId = UUID(uuidString: hostIdString) else {
+            completionHandler()
+            return
+        }
 
-        DispatchQueue.main.async {
+        clearDeliveredClickFallback()
+        routeToHost(hostId)
+        completionHandler()
+    }
+
+    func consumeClickFallback() {
+        onMain { [weak self] in
+            guard let self else { return }
+            guard let hostId = self.lastDeliveredHostId, let deliveredAt = self.lastDeliveredAt else { return }
+            let age = Date().timeIntervalSince(deliveredAt)
+            guard age <= self.clickFallbackTTL else {
+                self.clearDeliveredClickFallback()
+                return
+            }
+            self.clearDeliveredClickFallback()
+            self.routeToHost(hostId)
+        }
+    }
+
+    func consumeActivationFallback() {
+        onMain { [weak self] in
+            guard let self, self.deliveredWhileInactive else { return }
+            self.consumeClickFallback()
+        }
+    }
+
+    private func rememberDeliveredHost(_ hostId: UUID) {
+        onMain { [weak self] in
+            guard let self else { return }
+            self.lastDeliveredHostId = hostId
+            self.lastDeliveredAt = Date()
+            self.deliveredWhileInactive = !NSApp.isActive
+        }
+    }
+
+    private func clearDeliveredClickFallback() {
+        lastDeliveredHostId = nil
+        lastDeliveredAt = nil
+        deliveredWhileInactive = false
+    }
+
+    private func routeToHost(_ hostId: UUID) {
+        onMain {
+            self.navigation.requestHostSelection(hostId)
             NSApp.activate(ignoringOtherApps: true)
             NotificationCenter.default.post(
                 name: .muhSelectHostById,
                 object: nil,
                 userInfo: ["hostId": hostId]
             )
+        }
+    }
+
+    private func onMain(_ work: @escaping () -> Void) {
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.async(execute: work)
         }
     }
 }
