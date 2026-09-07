@@ -99,8 +99,7 @@ final class NotificationStatusTests: XCTestCase {
     }
 
     func testInitialAgentStatusIsSuppressedOncePerSession() {
-        let key = "muh.tests.title-baseline.\(UUID().uuidString)"
-        let store = HostTitleStore(persistenceKey: key)
+        let store = HostTitleStore()
         let hostId = UUID()
 
         XCTAssertFalse(store.shouldSuppressInitialStatus(hostId: hostId, title: "bash"))
