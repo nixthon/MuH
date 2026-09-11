@@ -125,6 +125,10 @@ final class GhosttyTerminalView: NSView, NSTextInputClient {
         viewBySurface[OpaquePointer(surface)]?.value
     }
 
+    static func hasLiveSurface(hostId: UUID) -> Bool {
+        registry.allObjects.contains { $0.hostId == hostId && $0.surface != nil }
+    }
+
     static func allLiveSurfaces() -> [ghostty_surface_t] {
         registry.allObjects.compactMap { $0.surface }
     }

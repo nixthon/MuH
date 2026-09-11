@@ -9,12 +9,14 @@ struct TerminalBridge: NSViewRepresentable {
     func makeNSView(context: Context) -> TerminalContainerView {
         let view = TerminalContainerView()
         view.store = store
+        view.applyTheme(theme)
         view.update(hosts: store.hosts, selectedId: store.selectedId, interactive: interactive)
         return view
     }
 
     func updateNSView(_ view: TerminalContainerView, context: Context) {
         view.store = store
+        view.applyTheme(theme)
         view.update(hosts: store.hosts, selectedId: store.selectedId, interactive: interactive)
     }
 }

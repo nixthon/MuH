@@ -500,6 +500,34 @@ private final class HostRowItemView: NSView, NSTextFieldDelegate, NSDraggingSour
         let menu = NSMenu()
         menu.autoenablesItems = false
 
+        // 连接类菜单按 host 类型区分：会话型（ssh/herdr/luvus）提供 连接/断开，
+        // 本机型（空命令/普通命令）提供 重启（杀旧立即开新）
+        if host.isSessionHost {
+            let connectItem = NSMenuItem(
+                title: L10n.string("sidebar.row.connect"),
+                action: #selector(connectAction),
+                keyEquivalent: "")
+            connectItem.target = self
+            menu.addItem(connectItem)
+
+            let disconnectItem = NSMenuItem(
+                title: L10n.string("sidebar.row.disconnect"),
+                action: #selector(disconnectAction),
+                keyEquivalent: "")
+            disconnectItem.target = self
+            disconnectItem.isEnabled = GhosttyTerminalView.hasLiveSurface(hostId: hostId)
+            menu.addItem(disconnectItem)
+        } else {
+            let restartItem = NSMenuItem(
+                title: L10n.string("sidebar.row.restart"),
+                action: #selector(restartAction),
+                keyEquivalent: "")
+            restartItem.target = self
+            menu.addItem(restartItem)
+        }
+
+        menu.addItem(.separator())
+
         let renameItem = NSMenuItem(
             title: L10n.string("sidebar.row.rename"),
             action: #selector(beginRenameAction),
@@ -528,6 +556,27 @@ private final class HostRowItemView: NSView, NSTextFieldDelegate, NSDraggingSour
 
     @objc fileprivate func deleteAction() {
         onRequestDelete?()
+    }
+
+    @objc fileprivate func disconnectAction() {
+        NotificationCenter.default.post(
+            name: .muhDisconnectHostSession,
+            object: nil,
+            userInfo: ["hostId": hostId]
+        )
+    }
+
+    @objc fileprivate func connectAction() {
+        NotificationCenter.default.post(
+            name: .muhConnectHostSession,
+            object: nil,
+            userInfo: ["hostId": hostId]
+        )
+    }
+
+    /// 本机型的「重启」：与「连接」同一条通道（杀旧会话并立即拉起新终端）
+    @objc fileprivate func restartAction() {
+        connectAction()
     }
 
     @objc private func requestEditCommandAction() {

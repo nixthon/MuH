@@ -198,6 +198,7 @@ MuH/
    - 保持零外部 SPM 依赖，优先使用系统原生 AppKit / SwiftUI 机制。
 
 2. **窗口与交互规范**：
+   - Host 分两类（按当前默认命令动态判定，`HostItem.isSessionHost`）：会话型（合 ssh / herdr / luvus）左键仅选中，由右键菜单「连接 / 断开」显式控制生命周期，「连接」自动选中 Host 并立即拉起新会话（已有旧会话则先杀再建），断开后保持断开态并在终端区居中显示占位提示；本机型（空命令/普通命令）恢复点击即开终端，右键菜单提供「重启」（杀旧立即开新，可救活已退出的 shell），不设连接概念。
    - MuH 采用无边框全尺寸设计（`.windowStyle(.hiddenTitleBar)` + `fullSizeContentView`）。
    - 为避免与 Ghostty 终端内的文本选择手势冲突，保持 `window.isMovableByWindowBackground = false`。
    - 自定义标题栏、侧边栏顶部、工作区列表空白区域统一使用 `WindowHelper` / `WindowDraggableArea` 提供平滑窗口拖拽与系统级双击缩放/最大化（遵循 `AppleActionOnDoubleClick` 偏好）。

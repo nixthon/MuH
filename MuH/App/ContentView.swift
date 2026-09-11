@@ -105,6 +105,16 @@ struct ContentView: View {
                 selectHostFromNotification(hostId)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .muhDisconnectHostSession)) { note in
+            if let hostId = note.userInfo?["hostId"] as? UUID {
+                titleStore.clear(hostId: hostId)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .muhConnectHostSession)) { note in
+            if let hostId = note.userInfo?["hostId"] as? UUID {
+                titleStore.clear(hostId: hostId)
+            }
+        }
         .onChange(of: notificationNavigation.pendingHostId, initial: true) { _, hostId in
             guard let hostId else { return }
             selectHostFromNotification(hostId)
@@ -186,4 +196,6 @@ extension Notification.Name {
     static let muhBeginCreateHost     = Notification.Name("muh.beginCreateHost")
     static let muhSelectHostAtIndex   = Notification.Name("muh.selectHostAtIndex")
     static let muhSelectHostById      = Notification.Name("muh.selectHostById")
+    static let muhDisconnectHostSession = Notification.Name("muh.disconnectHostSession")
+    static let muhConnectHostSession    = Notification.Name("muh.connectHostSession")
 }
