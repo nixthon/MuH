@@ -19,7 +19,7 @@ targets:
     info:
       path: MuH/Info.plist
       properties:
-        CFBundleShortVersionString: "0.1.5"
+        CFBundleShortVersionString: "0.1.6"
         CFBundleVersion: "1"
         CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
         CFBundleName: MuH

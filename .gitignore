@@ -29,6 +29,7 @@ MuH.xcodeproj/
 Local.xcconfig
 docs/dev_log.md
 docs/idea.md
+docs/AI_docs/
 
 # Vendor Large Binaries (Build using scripts/build-vendor.sh)
 Vendor/ghostty/lib/
