@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/Platform-macOS%2014.0+-blue?logo=apple" alt="Platform" />
   <img src="https://img.shields.io/badge/Terminal%20Engine-Ghostty%20(libghostty)-orange" alt="Ghostty Engine" />
   <img src="https://img.shields.io/badge/Multiplexer-Herdr%20%7C%20Luvus-green" alt="Multiplexer Integration" />
-  <img src="https://img.shields.io/badge/Version-v0.1.6-brightgreen" alt="Version" />
+  <img src="https://img.shields.io/badge/Version-v0.1.7-brightgreen" alt="Version" />
   <img src="https://img.shields.io/badge/License-MIT-purple" alt="License" />
 </p>
 
@@ -83,11 +83,11 @@ MuH 作为 macOS 顶层 Host 容器，通过极简的 **PTY 终端标题通道�
 
 ### 1. 下载与安装
 
-前往 [Releases 页面](https://github.com/tangxijin/MuH/releases) 下载最新的 `MuH-v0.1.6-macOS.zip`：
+前往 [Releases 页面](https://github.com/tangxijin/MuH/releases) 下载最新的 `MuH-v0.1.7-macOS.zip`：
 
 ```bash
 # 解压并将应用移动到 Applications 目录
-unzip MuH-v0.1.6-macOS.zip
+unzip MuH-v0.1.7-macOS.zip
 mv MuH.app /Applications/
 ```
 
