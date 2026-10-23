@@ -11,7 +11,6 @@ final class HostStore {
     }
 
     private let persistenceKey: String
-    private var saveWorkItem: DispatchWorkItem?
 
     init(persistenceKey: String = "muh.hosts.v1") {
         self.persistenceKey = persistenceKey
@@ -36,7 +35,7 @@ final class HostStore {
         let host = HostItem(name: name, defaultCommand: defaultCommand)
         hosts.append(host)
         selectedId = host.id
-        scheduleSave()
+        save()
         return host
     }
 
@@ -69,22 +68,22 @@ final class HostStore {
         save()
     }
 
-    private func scheduleSave() {
-        saveWorkItem?.cancel()
-        let item = DispatchWorkItem { [weak self] in self?.save() }
-        saveWorkItem = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: item)
-    }
-
     private func save() {
-        guard let data = try? JSONEncoder().encode(hosts) else { return }
+        guard let data = try? JSONEncoder().encode(hosts) else {
+            assertionFailure("[HostStore] encode failed, hosts not persisted")
+            return
+        }
         UserDefaults.standard.set(data, forKey: persistenceKey)
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: persistenceKey),
-              let decoded = try? JSONDecoder().decode([HostItem].self, from: data)
-        else { return }
-        self.hosts = decoded
+        guard let data = UserDefaults.standard.data(forKey: persistenceKey) else { return }
+        do {
+            self.hosts = try JSONDecoder().decode([HostItem].self, from: data)
+        } catch {
+            // 解码失败绝不静默抹掉用户清单：先留一份原始数据副本再回退到默认表。
+            UserDefaults.standard.set(data, forKey: persistenceKey + ".corrupt")
+            print("[HostStore] decode failed, raw data backed up to \(persistenceKey).corrupt: \(error)")
+        }
     }
 }

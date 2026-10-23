@@ -9,22 +9,10 @@ struct MuHApp: App {
     @State private var languageStore = LanguageStore.shared
 
     init() {
-        Self.migrateLegacyUserDefaultsIfNeeded()
         NSWindow.allowsAutomaticWindowTabbing = false
         if !Self.isRunningTests {
             let ok = GhosttyBridge.shared.initialize()
             if !ok { print("[MuH] Warning: libghostty initialization failed") }
-        }
-    }
-
-    private static func migrateLegacyUserDefaultsIfNeeded() {
-        let current = UserDefaults.standard
-        if current.object(forKey: "muh.hosts.items") == nil,
-           let legacy = UserDefaults(suiteName: "com.herdr.MuH") {
-            let dict = legacy.dictionaryRepresentation()
-            for (key, value) in dict where key.hasPrefix("muh.") {
-                current.set(value, forKey: key)
-            }
         }
     }
 
