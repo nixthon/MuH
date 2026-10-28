@@ -83,7 +83,7 @@ MuH serves as the top-level macOS host container. Through an ultra-simple **PTY 
 
 ### 1. Download & Install
 
-Download the latest pre-built binary `MuH-v0.1.8-macOS.zip` from [Releases](https://github.com/tangxijin/MuH/releases):
+Download the latest pre-built binary `MuH-v0.1.8-macOS.zip` from [Releases](https://github.com/nixthon/MuH/releases):
 
 ```bash
 # Extract and move to Applications
@@ -122,7 +122,7 @@ ssh <user@host> 'bash -s' < Resources/scripts/setup-luvus.sh
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/tangxijin/MuH.git
+git clone https://github.com/nixthon/MuH.git
 cd MuH
 
 # 2. Ensure XcodeGen is installed, then set up the toolchain with pixi (pins Zig 0.17.x)

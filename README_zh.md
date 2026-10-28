@@ -83,7 +83,7 @@ MuH 作为 macOS 顶层 Host 容器，通过极简的 **PTY 终端标题通道�
 
 ### 1. 下载与安装
 
-前往 [Releases 页面](https://github.com/tangxijin/MuH/releases) 下载最新的 `MuH-v0.1.8-macOS.zip`：
+前往 [Releases 页面](https://github.com/nixthon/MuH/releases) 下载最新的 `MuH-v0.1.8-macOS.zip`：
 
 ```bash
 # 解压并将应用移动到 Applications 目录
@@ -121,7 +121,7 @@ ssh <user@host> 'bash -s' < Resources/scripts/setup-luvus.sh
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/tangxijin/MuH.git
+git clone https://github.com/nixthon/MuH.git
 cd MuH
 
 # 2. 确保已安装 XcodeGen，然后用 pixi 初始化工具链环境（锁定 Zig 0.17.x）
