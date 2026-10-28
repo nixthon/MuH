@@ -81,8 +81,9 @@ ssh <user@host> 'bash -s' < Resources/scripts/setup-luvus.sh
 
 ### 6. Vendor 维护
 ```bash
-# 重新编译 Vendor/ghostty (需要 Zig 0.16.x)
-./scripts/build-vendor.sh
+# 重新编译 Vendor/ghostty（Zig 0.17.x 由 pixi.toml 管理，先 pixi install；
+# 脚本会自动优先使用 .pixi 环境中的 zig，也可直接 ./scripts/build-vendor.sh）
+pixi run vendor
 ```
 
 ---

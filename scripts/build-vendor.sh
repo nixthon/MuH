@@ -3,9 +3,17 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# 优先使用 pixi 管理的 Zig（见 pixi.toml，pixi run / pixi install 后可用），
+# 确保与 Ghostty 源码要求的锁定版本一致；无 pixi 环境时回退到 PATH 中的 zig。
+PIXI_ENV_BIN="$PROJECT_DIR/.pixi/envs/default/bin"
+if [ -x "$PIXI_ENV_BIN/zig" ]; then
+  export PATH="$PIXI_ENV_BIN:$PATH"
+fi
+
 GHOSTTY_SRC="${GHOSTTY_SRC:-/tmp/ghostty-src}"
-GHOSTTY_COMMIT="4c6215bb8ee186b5c829457a9a9a9c936f2337bf"
-MINIMUM_ZIG_VERSION="0.16.0"
+GHOSTTY_COMMIT="v1.4.0"
+MINIMUM_ZIG_VERSION="0.17.0"
 
 if ! command -v zig >/dev/null 2>&1; then
   echo "ERROR: Zig ${MINIMUM_ZIG_VERSION} or a compatible 0.16.x release is required but was not found in PATH." >&2

@@ -1,0 +1,14 @@
+[workspace]
+name = "muh"
+version = "0.1.0"
+description = "MuH — 超轻量 macOS 多机 Agent 终端管理器（libghostty 构建工具链环境）"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "osx-64"]
+
+[dependencies]
+# libghostty 1.4.x 要求 Zig >= 0.17.0（见 scripts/build-vendor.sh 版本校验）
+zig = "0.17.*"
+
+[tasks]
+# 重新编译 Vendor/ghostty/libghostty.a
+vendor = { cmd = "./scripts/build-vendor.sh" }
