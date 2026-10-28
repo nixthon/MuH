@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/Platform-macOS%2014.0+-blue?logo=apple" alt="Platform" />
   <img src="https://img.shields.io/badge/Terminal%20Engine-Ghostty%20(libghostty)-orange" alt="Ghostty Engine" />
   <img src="https://img.shields.io/badge/Multiplexer-Herdr%20%7C%20Luvus-green" alt="Multiplexer Integration" />
-  <img src="https://img.shields.io/badge/Version-v0.1.7-brightgreen" alt="Version" />
+  <img src="https://img.shields.io/badge/Version-v0.1.8-brightgreen" alt="Version" />
   <img src="https://img.shields.io/badge/License-MIT-purple" alt="License" />
 </p>
 
@@ -83,11 +83,11 @@ MuH 作为 macOS 顶层 Host 容器，通过极简的 **PTY 终端标题通道�
 
 ### 1. 下载与安装
 
-前往 [Releases 页面](https://github.com/tangxijin/MuH/releases) 下载最新的 `MuH-v0.1.7-macOS.zip`：
+前往 [Releases 页面](https://github.com/tangxijin/MuH/releases) 下载最新的 `MuH-v0.1.8-macOS.zip`：
 
 ```bash
 # 解压并将应用移动到 Applications 目录
-unzip MuH-v0.1.7-macOS.zip
+unzip MuH-v0.1.8-macOS.zip
 mv MuH.app /Applications/
 ```
 
@@ -124,10 +124,13 @@ ssh <user@host> 'bash -s' < Resources/scripts/setup-luvus.sh
 git clone https://github.com/tangxijin/MuH.git
 cd MuH
 
-# 2. 确保安装了 XcodeGen 和兼容的 Zig 0.16.x（首次需编译 libghostty）
-./scripts/build-vendor.sh
+# 2. 确保已安装 XcodeGen，然后用 pixi 初始化工具链环境（锁定 Zig 0.17.x）
+pixi install
 
-# 3. 生成工程、构建 Debug 版并启动
+# 3. 编译内嵌的 libghostty（首次）
+pixi run vendor
+
+# 4. 生成工程、构建 Debug 版并启动
 ./restart.sh
 ```
 

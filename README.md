@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/Platform-macOS%2014.0+-blue?logo=apple" alt="Platform" />
   <img src="https://img.shields.io/badge/Terminal%20Engine-Ghostty%20(libghostty)-orange" alt="Ghostty Engine" />
   <img src="https://img.shields.io/badge/Multiplexer-Herdr%20%7C%20Luvus-green" alt="Multiplexer Integration" />
-  <img src="https://img.shields.io/badge/Version-v0.1.7-brightgreen" alt="Version" />
+  <img src="https://img.shields.io/badge/Version-v0.1.8-brightgreen" alt="Version" />
   <img src="https://img.shields.io/badge/License-MIT-purple" alt="License" />
 </p>
 
@@ -83,11 +83,11 @@ MuH serves as the top-level macOS host container. Through an ultra-simple **PTY 
 
 ### 1. Download & Install
 
-Download the latest pre-built binary `MuH-v0.1.7-macOS.zip` from [Releases](https://github.com/tangxijin/MuH/releases):
+Download the latest pre-built binary `MuH-v0.1.8-macOS.zip` from [Releases](https://github.com/tangxijin/MuH/releases):
 
 ```bash
 # Extract and move to Applications
-unzip MuH-v0.1.7-macOS.zip
+unzip MuH-v0.1.8-macOS.zip
 mv MuH.app /Applications/
 ```
 
@@ -125,10 +125,13 @@ ssh <user@host> 'bash -s' < Resources/scripts/setup-luvus.sh
 git clone https://github.com/tangxijin/MuH.git
 cd MuH
 
-# 2. Ensure XcodeGen and compatible Zig 0.16.x are installed (first time only)
-./scripts/build-vendor.sh
+# 2. Ensure XcodeGen is installed, then set up the toolchain with pixi (pins Zig 0.17.x)
+pixi install
 
-# 3. Generate project, compile Debug build, and run
+# 3. Compile the vendored libghostty (first time only)
+pixi run vendor
+
+# 4. Generate project, compile Debug build, and run
 ./restart.sh
 ```
 
