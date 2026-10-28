@@ -199,18 +199,105 @@ final class GhosttyBridge {
 
     private static let closeSurfaceCallback: ghostty_runtime_close_surface_cb = { _, _ in }
 
-    private static let readClipboardCallback: ghostty_runtime_read_clipboard_cb = { userdata, _, state in
-        guard let userdata else { return false }
+    private static let readClipboardCallback: ghostty_runtime_read_clipboard_cb = { userdata, clipboard, state, mimes, mimesLen, list in
+        guard let userdata else { return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED }
+        guard clipboard == GHOSTTY_CLIPBOARD_STANDARD else { return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED }
         let view = Unmanaged<GhosttyTerminalView>.fromOpaque(userdata).takeUnretainedValue()
-        guard let surface = view.rawSurface else { return false }
-        guard let str = NSPasteboard.general.string(forType: .string), !str.isEmpty else { return false }
-        str.withCString { ptr in
-            ghostty_surface_complete_clipboard_request(surface, ptr, state, false)
+        guard let surface = view.rawSurface else { return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED }
+
+        // MuH 只服务文本剪贴板：对每个请求的 text/plain 变体返回系统剪贴板字符串。
+        let text = NSPasteboard.general.string(forType: .string)
+        var wantedMimes: [String] = []
+        if let mimes {
+            for i in 0..<mimesLen {
+                guard let ptr = mimes[i] else { continue }
+                let mime = String(cString: ptr)
+                guard mime == "text/plain" || mime.hasPrefix("text/plain;") else { continue }
+                guard !wantedMimes.contains(mime) else { continue }
+                wantedMimes.append(mime)
+            }
         }
-        return true
+
+        // 可用类型列表仅在 list 请求（Kitty 剪贴板协议）时返回。
+        let availableMimes: [String] = (list && text != nil) ? ["text/plain", "text/plain;charset=utf-8"] : []
+
+        let contents: [String] = (text?.isEmpty == false) ? wantedMimes : []
+        guard !contents.isEmpty || list else {
+            return GHOSTTY_CLIPBOARD_READ_UNAVAILABLE
+        }
+
+        completeClipboardRequest(surface,
+                                 text: (text?.isEmpty == false) ? text! : nil,
+                                 mimes: contents,
+                                 available: availableMimes,
+                                 state: state)
+        return GHOSTTY_CLIPBOARD_READ_STARTED
     }
 
-    private static let confirmReadClipboardCallback: ghostty_runtime_confirm_read_clipboard_cb = { _, _, _, _ in }
+    /// 将文本剪贴板内容以 C 内存安全的方式回传给 libghostty（1.4 新版 API：
+    /// ghostty_clipboard_content_s.data 为带显式长度的二进制安全缓冲，
+    /// 不保证 NUL 结尾，调用期间必须保持指针有效）。
+    private static func completeClipboardRequest(_ surface: ghostty_surface_t,
+                                                 text: String?,
+                                                 mimes: [String],
+                                                 available: [String],
+                                                 state: UnsafeMutableRawPointer?) {
+        var cStrings: [UnsafeMutablePointer<CChar>] = []
+        var cBuffers: [UnsafeMutableRawPointer] = []
+        defer {
+            cStrings.forEach { free($0) }
+            cBuffers.forEach { $0.deallocate() }
+        }
+
+        var cContents: [ghostty_clipboard_content_s] = []
+        if let text, let bytes = text.data(using: .utf8) {
+            let buf = UnsafeMutableRawPointer.allocate(byteCount: max(bytes.count, 1), alignment: 1)
+            cBuffers.append(buf)
+            bytes.withUnsafeBytes { src in
+                if let base = src.baseAddress {
+                    buf.copyMemory(from: base, byteCount: src.count)
+                }
+            }
+            for mime in mimes {
+                guard let mimePtr = strdup(mime) else { continue }
+                cStrings.append(mimePtr)
+                cContents.append(ghostty_clipboard_content_s(
+                    mime: mimePtr,
+                    data: buf.assumingMemoryBound(to: CChar.self),
+                    len: bytes.count))
+            }
+        }
+
+        var cAvailable: [UnsafePointer<CChar>?] = []
+        for mime in available {
+            guard let str = strdup(mime) else { continue }
+            cStrings.append(str)
+            cAvailable.append(UnsafePointer(str))
+        }
+
+        cContents.withUnsafeBufferPointer { contentsBuf in
+            cAvailable.withUnsafeBufferPointer { availableBuf in
+                var complete = ghostty_clipboard_complete_s(
+                    contents: contentsBuf.baseAddress,
+                    contents_len: contentsBuf.count,
+                    available: availableBuf.baseAddress,
+                    available_len: availableBuf.count,
+                    confirmed: false,
+                    remember: false)
+                ghostty_surface_complete_clipboard_request(surface, &complete, state)
+            }
+        }
+    }
+
+    private static let confirmReadClipboardCallback: ghostty_runtime_confirm_read_clipboard_cb = { userdata, _, state, _ in
+        // MuH 不实现剪贴板读取授权弹窗：OSC 52 / Kitty 剪贴板读取一律拒绝，
+        // 避免远程程序在无用户确认的情况下读取本机剪贴板。
+        // 用户如需放行可在 Ghostty 配置中设置 clipboard-read = allow。
+        guard let userdata else { return }
+        let view = Unmanaged<GhosttyTerminalView>.fromOpaque(userdata).takeUnretainedValue()
+        guard let surface = view.rawSurface else { return }
+        ghostty_surface_deny_clipboard_request(surface, state)
+    }
 
     private static let writeClipboardCallback: ghostty_runtime_write_clipboard_cb = { userdata, clipboard, content, count, confirm in
         guard !GhosttyBridge.suppressClipboardWrites else { return }
@@ -219,8 +306,10 @@ final class GhosttyBridge {
         var items: [(NSPasteboard.PasteboardType, String)] = []
         for i in 0..<count {
             let item = content[i]
-            guard let dataPtr = item.data,
-                  let str = String(cString: dataPtr, encoding: .utf8) else { continue }
+            guard let dataPtr = item.data else { continue }
+            // 1.4 起 data 为带显式长度的二进制安全缓冲，不再保证 NUL 结尾。
+            let data = item.len > 0 ? Data(bytes: dataPtr, count: Int(item.len)) : Data()
+            guard let str = String(data: data, encoding: .utf8) else { continue }
             let mime: String = item.mime.flatMap { String(cString: $0, encoding: .utf8) } ?? "text/plain"
             let type: NSPasteboard.PasteboardType
             switch mime {
